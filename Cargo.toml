@@ -1,0 +1,32 @@
+[package]
+name = "stellar-consensus-verifier"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.81.0"
+license = "Apache-2.0"
+description = "Stellar SCP consensus verification, with no I/O and no network stack"
+repository = "https://github.com/ipsadev/stellar-consensus-verifier"
+keywords = ["stellar", "scp", "consensus", "light-client", "verification"]
+categories = ["cryptography", "no-std"]
+
+[lib]
+name = "stellar_consensus_verifier"
+path = "src/lib.rs"
+
+[dependencies]
+ed25519-dalek = { version = "2", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+thiserror = "1"
+
+[dev-dependencies]
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "deny", priority = 2 }
+
+[lints.clippy]
+use_self = "warn"
