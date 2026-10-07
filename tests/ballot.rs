@@ -1,9 +1,10 @@
-use ed25519_dalek::Signer;
-use ed25519_dalek::SigningKey;
-use stellar_consensus_verifier::ballot::*;
-use stellar_consensus_verifier::envelope::{Ballot, Confirm, Externalize, Prepare, Statement};
-use stellar_consensus_verifier::error::ScpError;
-use stellar_consensus_verifier::quorum::{NodeId, QuorumSet};
+use ed25519_dalek::{Signer, SigningKey};
+use stellar_consensus_verifier::{
+    ballot::*,
+    envelope::{Ballot, Confirm, Externalize, Prepare, Statement},
+    error::ScpError,
+    quorum::{NodeId, QuorumSet},
+};
 
 const NETWORK: [u8; 32] = [0x77; 32];
 const SLOT: u64 = 4_160_279;

@@ -1,6 +1,5 @@
 use serde::Deserialize;
-use sha2::Digest;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::quorum::QuorumSet;
 
 #[derive(Deserialize)]

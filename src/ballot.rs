@@ -1,14 +1,13 @@
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{format, string::String, vec::Vec};
 
-use ed25519_dalek::Signature;
-use ed25519_dalek::VerifyingKey;
+use ed25519_dalek::{Signature, VerifyingKey};
 
-use crate::envelope::{Ballot, Envelope, Statement};
-use crate::error::ScpError;
-use crate::quorum::{is_quorum, NodeId, QuorumSet};
-use crate::xdr::Result;
+use crate::{
+    envelope::{Ballot, Envelope, Statement},
+    error::ScpError,
+    quorum::{is_quorum, NodeId, QuorumSet},
+    xdr::Result,
+};
 
 /// A range of consensus rounds.
 pub type Interval = (u32, u32);

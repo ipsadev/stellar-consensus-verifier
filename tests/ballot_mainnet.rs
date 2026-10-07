@@ -1,13 +1,11 @@
 use serde::Deserialize;
-use sha2::Digest;
-use sha2::Sha256;
-use stellar_consensus_verifier::ballot::authenticate;
-use stellar_consensus_verifier::ballot::confirmed_commit;
-use stellar_consensus_verifier::ballot::confirmed_value;
-use stellar_consensus_verifier::ballot::Authenticated;
-use stellar_consensus_verifier::envelope::Envelope;
-use stellar_consensus_verifier::error::ScpError;
-use stellar_consensus_verifier::quorum::QuorumSet;
+use sha2::{Digest, Sha256};
+use stellar_consensus_verifier::{
+    ballot::{authenticate, confirmed_commit, confirmed_value, Authenticated},
+    envelope::Envelope,
+    error::ScpError,
+    quorum::QuorumSet,
+};
 
 const LIVE_PASSPHRASE: &str = "Public Global Stellar Network ; September 2015";
 const TEST_PASSPHRASE: &str = "Test SDF Network ; September 2015";

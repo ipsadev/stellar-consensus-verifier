@@ -1,6 +1,5 @@
 use serde::Deserialize;
-use stellar_consensus_verifier::ledger::tx_set_hash_of_value;
-use stellar_consensus_verifier::ledger::LedgerHeader;
+use stellar_consensus_verifier::ledger::{tx_set_hash_of_value, LedgerHeader};
 
 #[derive(Deserialize)]
 struct Archived {
