@@ -33,5 +33,5 @@ That stays the caller's decision.
 
 ## License
 
-Licensed under the
+Copyright 2026 Amanda Gonsalves. Licensed under the
 [Apache License 2.0](https://github.com/ipsadev/stellar-consensus-verifier/blob/main/LICENSE).
