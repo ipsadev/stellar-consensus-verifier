@@ -255,3 +255,146 @@ fn a_well_formed_empty_tx_set_arm_decodes_and_is_exposed() {
     assert_eq!(arm.proposed_previous_ledger_version, 28);
     assert_eq!(header.tx_set_hash, [0u8; 32]);
 }
+
+fn signed_ms_arm(close_time_ms: u64) -> Vec<u8> {
+    let mut arm = close_time_ms.to_be_bytes().to_vec();
+
+    arm.extend_from_slice(&close_value_signature());
+    arm
+}
+
+fn empty_ms_arm(
+    close_time_ms: u64,
+    proposed_prev_hash: [u8; 32],
+    proposed_version: u32,
+) -> Vec<u8> {
+    let mut arm = close_time_ms.to_be_bytes().to_vec();
+
+    arm.extend_from_slice(&empty_arm(proposed_prev_hash, proposed_version));
+    arm
+}
+
+#[test]
+fn a_signed_millisecond_header_decodes_with_its_close_time() {
+    let raw = build_header(
+        30,
+        4_264_884,
+        [0x22u8; 32],
+        STELLAR_VALUE_SIGNED_MS,
+        &signed_ms_arm(1_700_000_000_250),
+    );
+    let header = LedgerHeader::decode(&raw).expect("a CAP-88 header decodes");
+
+    assert_eq!(header.close_time, 1_700_000_000);
+    assert_eq!(header.close_time_ms, Some(1_700_000_000_250));
+    assert!(header.empty_tx_set.is_none());
+    assert_eq!(header.scp_value_bytes.len(), 32 + 8 + 4 + 4 + 8 + 36 + 68);
+}
+
+#[test]
+fn an_empty_millisecond_header_decodes_with_its_proposed_value() {
+    let arm = empty_ms_arm(1_700_000_000_999, [0x11u8; 32], 30);
+    let raw = build_header(
+        30,
+        4_264_884,
+        [0u8; 32],
+        STELLAR_VALUE_EMPTY_TX_SET_MS,
+        &arm,
+    );
+    let header = LedgerHeader::decode(&raw).expect("a CAP-88 empty header decodes");
+
+    assert_eq!(header.close_time_ms, Some(1_700_000_000_999));
+    let info = header.empty_tx_set.expect("carries the proposed value");
+
+    assert_eq!(info.proposed_tx_set_hash, [0x99u8; 32]);
+    assert_eq!(info.proposed_previous_ledger_hash, [0x11u8; 32]);
+    assert_eq!(info.proposed_previous_ledger_version, 30);
+    assert_eq!(
+        header.scp_value_bytes.len(),
+        32 + 8 + 4 + 4 + 8 + 32 + 32 + 4 + 36 + 68
+    );
+}
+
+#[test]
+fn a_whole_second_header_has_no_millisecond_close_time() {
+    let header = LedgerHeader::decode(&header_with_ext(
+        STELLAR_VALUE_SIGNED,
+        &close_value_signature(),
+    ))
+    .unwrap();
+
+    assert_eq!(header.close_time_ms, None);
+}
+
+#[test]
+fn a_millisecond_close_time_that_disagrees_with_the_seconds_is_refused() {
+    for ms in [1_699_999_999_999u64, 1_700_000_001_000] {
+        let raw = build_header(
+            30,
+            4_264_884,
+            [0x22u8; 32],
+            STELLAR_VALUE_SIGNED_MS,
+            &signed_ms_arm(ms),
+        );
+
+        assert!(
+            LedgerHeader::decode(&raw).is_err(),
+            "{ms} accepted for second 1700000000"
+        );
+    }
+}
+
+#[test]
+fn millisecond_kinds_are_refused_before_protocol_30() {
+    let signed = build_header(
+        29,
+        4_264_884,
+        [0x22u8; 32],
+        STELLAR_VALUE_SIGNED_MS,
+        &signed_ms_arm(1_700_000_000_250),
+    );
+    let empty = build_header(
+        29,
+        4_264_884,
+        [0u8; 32],
+        STELLAR_VALUE_EMPTY_TX_SET_MS,
+        &empty_ms_arm(1_700_000_000_250, [0x11u8; 32], 29),
+    );
+
+    assert!(LedgerHeader::decode(&signed).is_err());
+    assert!(LedgerHeader::decode(&empty).is_err());
+}
+
+#[test]
+fn an_empty_millisecond_header_keeps_the_empty_tx_set_rules() {
+    let wrong_previous = build_header(
+        30,
+        4_264_884,
+        [0u8; 32],
+        STELLAR_VALUE_EMPTY_TX_SET_MS,
+        &empty_ms_arm(1_700_000_000_250, [0x77u8; 32], 30),
+    );
+    let not_empty = build_header(
+        30,
+        4_264_884,
+        [0x22u8; 32],
+        STELLAR_VALUE_EMPTY_TX_SET_MS,
+        &empty_ms_arm(1_700_000_000_250, [0x11u8; 32], 30),
+    );
+
+    assert!(LedgerHeader::decode(&wrong_previous).is_err());
+    assert!(LedgerHeader::decode(&not_empty).is_err());
+}
+
+#[test]
+fn an_unknown_value_kind_is_still_refused() {
+    let raw = build_header(
+        30,
+        4_264_884,
+        [0x22u8; 32],
+        5,
+        &signed_ms_arm(1_700_000_000_250),
+    );
+
+    assert!(LedgerHeader::decode(&raw).is_err());
+}

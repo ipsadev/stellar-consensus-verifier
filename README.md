@@ -23,6 +23,8 @@ reads bytes and returns answers. No network, no storage, no clock.
 Signatures are verified inside the crate. `ballot::authenticate` is the only way
 to turn raw messages into something the rest of the crate will accept.
 
+`ledger` reads every kind of agreed value up to Protocol 30: plain, signed, empty-transaction-set (CAP-83), and the two that also record the close time in milliseconds (CAP-88). It refuses a millisecond close time before Protocol 30, or one whose seconds differ from the header's `closeTime`, and exposes it as `close_time_ms`.
+
 It does not tell you whether the validators you trust are a sensible choice.
 That stays the caller's decision.
 

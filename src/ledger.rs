@@ -12,6 +12,11 @@ pub const STELLAR_VALUE_SIGNED: i32 = 1;
 /// A ledger the network agreed to close empty because its transactions could
 /// not be fetched in time.
 pub const STELLAR_VALUE_EMPTY_TX_SET: i32 = 2;
+/// A signed ledger that also records its close time in milliseconds (CAP-88).
+pub const STELLAR_VALUE_SIGNED_MS: i32 = 3;
+/// An empty-transaction-set ledger that also records its close time in
+/// milliseconds (CAP-88).
+pub const STELLAR_VALUE_EMPTY_TX_SET_MS: i32 = 4;
 
 const MAX_UPGRADES: usize = 6;
 const MAX_UPGRADE_LEN: usize = 128;
@@ -20,6 +25,7 @@ const MAX_UPGRADE_LEN: usize = 128;
 pub const SKIP_LIST_LEN: usize = 4;
 
 const EMPTY_TX_SET_PROTOCOL_VERSION: u32 = 28;
+const MS_CLOSE_TIME_PROTOCOL_VERSION: u32 = 30;
 const EMPTY_TX_SET_HASH: [u8; 32] = [0u8; 32];
 const GENESIS_LEDGER_SEQ: u32 = 1;
 
@@ -48,6 +54,7 @@ pub struct LedgerHeader {
     pub empty_tx_set: Option<EmptyTxSet>,
     pub scp_value_bytes: Vec<u8>,
     pub close_time: u64,
+    pub close_time_ms: Option<u64>,
     pub tx_set_result_hash: [u8; 32],
     pub bucket_list_hash: [u8; 32],
     pub ledger_seq: u32,
@@ -75,6 +82,7 @@ impl LedgerHeader {
         }
 
         let mut empty_tx_set = None;
+        let mut close_time_ms = None;
 
         match decoded.i32()? {
             STELLAR_VALUE_BASIC => {}
@@ -83,6 +91,27 @@ impl LedgerHeader {
                 let _signature = decoded.signature()?;
             }
             STELLAR_VALUE_EMPTY_TX_SET => {
+                let proposed_tx_set_hash = decoded.fixed32()?;
+                let proposed_previous_ledger_hash = decoded.fixed32()?;
+                let proposed_previous_ledger_version = decoded.u32()?;
+                let _node_id = decoded.node_id()?;
+                let _signature = decoded.signature()?;
+
+                empty_tx_set = Some(EmptyTxSet {
+                    proposed_tx_set_hash,
+                    proposed_previous_ledger_hash,
+                    proposed_previous_ledger_version,
+                });
+            }
+            STELLAR_VALUE_SIGNED_MS => {
+                close_time_ms = Some(decoded.u64()?);
+
+                let _node_id = decoded.node_id()?;
+                let _signature = decoded.signature()?;
+            }
+            STELLAR_VALUE_EMPTY_TX_SET_MS => {
+                close_time_ms = Some(decoded.u64()?);
+
                 let proposed_tx_set_hash = decoded.fixed32()?;
                 let proposed_previous_ledger_hash = decoded.fixed32()?;
                 let proposed_previous_ledger_version = decoded.u32()?;
@@ -133,6 +162,8 @@ impl LedgerHeader {
 
         decoded.finish()?;
 
+        check_close_time_ms(close_time_ms, close_time, ledger_version)?;
+
         check_empty_tx_set(
             &empty_tx_set,
             &tx_set_hash,
@@ -148,6 +179,7 @@ impl LedgerHeader {
             empty_tx_set,
             scp_value_bytes,
             close_time,
+            close_time_ms,
             tx_set_result_hash,
             bucket_list_hash,
             ledger_seq,
@@ -157,6 +189,30 @@ impl LedgerHeader {
 }
 
 extern crate alloc;
+
+fn check_close_time_ms(
+    close_time_ms: Option<u64>,
+    close_time: u64,
+    ledger_version: u32,
+) -> Result<()> {
+    let Some(close_time_ms) = close_time_ms else {
+        return Ok(());
+    };
+
+    if ledger_version < MS_CLOSE_TIME_PROTOCOL_VERSION {
+        return Err(bad(
+            "millisecond close time before the protocol version that permits it",
+        ));
+    }
+
+    if close_time_ms / 1000 != close_time {
+        return Err(bad(
+            "closeTime is not closeTimeMs rounded down to the second",
+        ));
+    }
+
+    Ok(())
+}
 
 fn check_empty_tx_set(
     empty_tx_set: &Option<EmptyTxSet>,
