@@ -298,6 +298,22 @@ fn confirm_ranges_that_do_not_overlap_do_not_confirm() {
 }
 
 #[test]
+fn a_quorum_of_zero_commit_confirms_is_refused() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let members = [
+        (1, confirm(0, 1, VALUE)),
+        (2, confirm(0, 1, VALUE)),
+        (3, confirm(0, 1, VALUE)),
+    ];
+
+    let degenerate = [confirm(0, 1, VALUE)];
+    let refs: Vec<&Statement> = degenerate.iter().collect();
+
+    assert!(commit_boundaries(&ballot(0, VALUE), &refs).contains(&0));
+    assert!(confirmed_commit(&local, &evidence(&members, &local), VALUE).is_none());
+}
+
+#[test]
 fn an_externalize_is_counted_without_its_quorum_set_preimage() {
     let local = flat(&[1, 2, 3, 4], 3);
     let members = [

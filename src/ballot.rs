@@ -319,6 +319,7 @@ pub fn confirmed_commit(
             commit_predicate(&ballot, check, statement)
         })
     })
+    .filter(|(low, _)| *low != 0)
 }
 
 /// The value the network settled on, according to this evidence.
