@@ -2,6 +2,16 @@
 
 All notable changes to this crate are recorded here. It follows semantic versioning: a major bump signals breaking API changes.
 
+## 2.2.0
+
+### Changed
+
+- The crate is now genuinely `no_std`: `#![no_std]` with `extern crate alloc`, and `thiserror` 2 with default features off. It builds for a bare-metal target (`thumbv7em-none-eabi`), so the `no-std` category is now accurate (1.x and 2.0/2.1 carried the label but still pulled in the standard library through `thiserror`).
+
+### Added
+
+- The router-event reader understands every Protocol 30 `SCAddress` type — muxed account, claimable balance, liquidity pool and muxed contract — alongside account and contract, and it skips the `SCV_EXECUTABLE_TAG` value and the `ExternalRef` contract executable. Before this, an event anywhere in the router's transaction that carried one of these made `verify_router_root` refuse a genuine state root (safe, but it could stall updates).
+
 ## 2.1.0
 
 ### Added
@@ -17,7 +27,7 @@ A hardening and restructuring release from the audit. Every consumer must update
 
 ### Security
 
-- Fixed a predecessor-authentication forgery in the next-slot binding. `bind_successor` previously compared `successor.previous_ledger_hash` against the header hash, both of which are header fields outside the signed `scpValue` and so attacker-editable; a forged ledger could be bound to a forged successor. It now authenticates the hash of ledger N from N+1's transaction set: the successor's confirmed value fixes the next slot's `txSetHash`, the supplied transaction set must hash to it, and that set's `previousLedgerHash` is the real hash of N. This relies on the stellar-core Herder rule, stated in `SECURITY.md`. Regression coverage is in `tests/forgery.rs`.
+- Fixed a predecessor-authentication forgery in the next-slot binding. `bind_successor` previously compared `successor.previous_ledger_hash` against the header hash, both of which are header fields outside the signed `scpValue` and so attacker-editable; a forged ledger could be bound to a forged successor. It now authenticates the hash of ledger N from N+1's transaction set: the successor's confirmed value fixes the next slot's `txSetHash`, the supplied transaction set must hash to it, and that set's `previousLedgerHash` is the real hash of N. This relies on the stellar-core Herder rule, stated in `SECURITY.md`. Regression coverage is in `tests/verify/forgery.rs`.
 
 ### Changed (breaking)
 

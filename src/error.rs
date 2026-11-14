@@ -1,5 +1,7 @@
 extern crate alloc;
 
+use alloc::string::String;
+
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
