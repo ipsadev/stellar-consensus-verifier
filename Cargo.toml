@@ -124,3 +124,7 @@ path = "tests/verify/verify_router.rs"
 name = "xdr"
 path = "tests/xdr/xdr.rs"
 
+
+[[test]]
+name = "mutations"
+path = "tests/verify/mutations.rs"
