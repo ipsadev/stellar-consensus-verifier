@@ -412,6 +412,21 @@ fn the_confirmed_value_is_returned_when_one_value_is_backed() {
 }
 
 #[test]
+fn one_value_confirms_across_different_ballot_counters() {
+    let local = flat(&[1, 2, 3], 3);
+    let members = [
+        (1, externalize(1, 1, VALUE)),
+        (2, externalize(7, 7, VALUE)),
+        (3, externalize(4123, 4123, VALUE)),
+    ];
+
+    let value = confirmed_value(&local, &evidence(&members, &local))
+        .expect("the counters differ but the committed value is the same");
+
+    assert_eq!(value, VALUE);
+}
+
+#[test]
 fn no_confirmed_value_is_an_error_rather_than_a_guess() {
     let local = flat(&[1, 2, 3, 4], 3);
     let members = [(1, confirm(1, 1, VALUE))];
