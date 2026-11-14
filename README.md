@@ -27,7 +27,7 @@ reads bytes and returns answers. No network, no storage, no clock.
 | `xdr` | reading Stellar's binary format without trusting it |
 | `error` | every reason a proof can be rejected |
 
-Signatures are verified inside the crate. `primitives::scp::envelope::authenticate` is the only way to turn raw messages into something the rest of the crate will accept, and `verify` is the recommended way to drive it. See [SECURITY.md](SECURITY.md) for the trusted inputs, the required call order, and what each step does and does not establish.
+Signatures are verified inside the crate. `primitives::scp::envelope::authenticate` is the only way to turn raw messages into something the rest of the crate will accept, and `verify` is the recommended way to drive it. Build a trust root with `TrustRoot::from_pinned`, pinning its fingerprint out of band, then call `verify_update` to authenticate a ledger and its successor in one step and `verify_router_root` for the router state root, or drive the pipeline stage by stage. See [SECURITY.md](SECURITY.md) for the trusted inputs, the required call order, and what each step does and does not establish.
 
 `primitives::stellar::header` reads every kind of agreed value up to Protocol 30: plain, signed, empty-transaction-set (CAP-83), and the two that also record the close time in milliseconds (CAP-88). It refuses a millisecond close time before Protocol 30, or one whose seconds differ from the header's `closeTime`, and exposes it as `close_time_ms`.
 
