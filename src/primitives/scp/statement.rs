@@ -1,7 +1,7 @@
-use crate::xdr::{Decoder, Result};
 use crate::{
     error::ScpError,
     primitives::scp::ballot::{compare_optional, read_ballot, read_optional_ballot, Ballot},
+    xdr::{Decoder, Result},
 };
 
 #[derive(Clone, Debug)]

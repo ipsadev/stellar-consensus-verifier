@@ -2,6 +2,21 @@
 
 All notable changes to this crate are recorded here. It follows semantic versioning: a major bump signals breaking API changes.
 
+## Unreleased
+
+### Added
+
+- Coverage-guided fuzz targets under `fuzz/` (a cargo-fuzz crate, excluded from the published package): `LedgerHeader::decode`, `Envelope::decode`, `QuorumSet::decode`, the transaction-set reader, and `verify_update` run against the committed `testnet-router-chain` fixture. See `fuzz/README.md` for how to run them.
+
+### Changed
+
+- The router-event reader now rejects a claimable-balance `SCAddress` whose `ClaimableBalanceIDType` is not the only defined variant, `V0` (0), instead of accepting any discriminant. This is a skip-only path that cannot cause a false accept; the change makes it fail fast on undefined input.
+- `just fmt-check` (and the CI fmt step) now runs on nightly, so the nightly-only `imports_granularity` and `group_imports` options in `rustfmt.toml` are actually enforced rather than silently skipped on stable.
+
+### Documentation
+
+- `SECURITY.md` step 5 now documents that the caller chooses which result pair is the router's transaction (for example the inner pair of a fee-bump), and that this is safe because every pair is first bound, as an ordered set, to `tx_set_result_hash`.
+
 ## 2.2.0
 
 ### Changed

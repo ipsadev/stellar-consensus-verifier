@@ -2,8 +2,10 @@ use alloc::vec::Vec;
 
 use sha2::{Digest, Sha256};
 
-use crate::error::ScpError;
-use crate::xdr::{Decoder, Result, MAX_QSET_DEPTH, MAX_QSET_VALIDATORS};
+use crate::{
+    error::ScpError,
+    xdr::{Decoder, Result, MAX_QSET_DEPTH, MAX_QSET_VALIDATORS},
+};
 
 /// A validator, identified by its public key.
 pub type NodeId = [u8; 32];

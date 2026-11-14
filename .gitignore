@@ -3,3 +3,6 @@ target
 /.vscode/
 .DS_Store
 /core-oracle/oracle
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/

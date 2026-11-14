@@ -1,5 +1,4 @@
-use crate::xdr::Result;
-use crate::{error::ScpError, primitives::stellar::header::LedgerHeader};
+use crate::{error::ScpError, primitives::stellar::header::LedgerHeader, xdr::Result};
 
 /// Most ledgers one `walk_back` call may step through, to bound a verifier's work.
 pub const MAX_WALK_BACK_STEPS: usize = 1000;
