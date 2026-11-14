@@ -77,9 +77,6 @@ fn verify_state_root_rejects_a_tampered_result_set() {
 
 #[test]
 fn verify_state_root_rejects_a_symbol_that_is_not_the_sole_topic() {
-    // "recv_packet" really appears in this ledger, but as the first of three
-    // topics on a different event. The fixed-layout rule requires the matched
-    // topic to be the event's only one, so it must not be accepted as a root.
     let fx = fixture();
     let pairs: Vec<Vec<u8>> = fx.result_pairs.iter().map(|s| unhex(s)).collect();
     let tx_set_result_hash = h32(&fx.tx_set_result_hash);

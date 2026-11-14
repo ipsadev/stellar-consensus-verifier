@@ -2,7 +2,10 @@ use serde::Deserialize;
 use stellar_consensus_verifier::{
     error::ScpError,
     primitives::scp::quorum::QuorumSet,
-    verify::{bind_successor, verify_consensus, verify_header, verify_router_root, ConfirmedValue},
+    verify::{
+        bind_successor, verify_consensus, verify_header, verify_router_root, verify_update,
+        ConfirmedValue, UpdateEvidence,
+    },
 };
 
 #[derive(Deserialize)]
@@ -65,10 +68,6 @@ fn successor_value(fx: &Fixture, nid: &[u8; 32], local: &QuorumSet) -> Confirmed
     .expect("the successor's value is confirmed")
 }
 
-// The whole typed pipeline on a real testnet ledger: value-bind the router
-// ledger, authenticate it against the next slot's transaction set, then extract
-// its router state root. verify_router_root only accepts an AuthenticatedHeader,
-// a compile-time guarantee this test cannot bypass at runtime.
 #[test]
 fn the_typed_pipeline_extracts_a_router_root_from_a_real_testnet_ledger() {
     let fx = fixture();
@@ -108,6 +107,50 @@ fn the_typed_pipeline_extracts_a_router_root_from_a_real_testnet_ledger() {
     assert_eq!(verified.root(), &h32(&r.expected_root));
     assert_eq!(verified.ledger_seq(), r.slot as u32);
     assert_eq!(verified.router_id(), &router_id);
+}
+
+#[test]
+fn verify_update_authenticates_the_router_ledger_in_one_call() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = QuorumSet::decode(&unhex(&fx.local_quorum_set)).expect("local quorum set");
+    let r = &fx.router;
+
+    let header = unhex(&r.header);
+    let envelopes = hexvec(&r.envelopes);
+    let quorum_sets = hexvec(&r.quorum_sets);
+    let successor_envelopes = hexvec(&fx.successor.envelopes);
+    let successor_quorum_sets = hexvec(&fx.successor.quorum_sets);
+    let successor_tx_set = unhex(&fx.successor.tx_set);
+
+    let anchored = verify_update(
+        &local,
+        &UpdateEvidence {
+            network_id: &nid,
+            slot: r.slot,
+            header_xdr: &header,
+            envelopes_xdr: &envelopes,
+            quorum_sets_xdr: &quorum_sets,
+            successor_envelopes_xdr: &successor_envelopes,
+            successor_quorum_sets_xdr: &successor_quorum_sets,
+            successor_tx_set_xdr: &successor_tx_set,
+        },
+    )
+    .expect("the router ledger authenticates end to end");
+
+    let router_id = h32(&r.router_contract_id);
+    let verified = verify_router_root(
+        &anchored,
+        &hexvec(&r.result_pairs),
+        r.result_index,
+        &unhex(&r.success_preimage_xdr),
+        &router_id,
+        &unhex(&r.root_event_topic),
+    )
+    .expect("the router root extracts from the one-call anchor");
+
+    assert_eq!(verified.root(), &h32(&r.expected_root));
+    assert_eq!(verified.ledger_seq(), r.slot as u32);
 }
 
 #[test]

@@ -47,8 +47,6 @@ fn an_all_zero_signature_is_rejected() {
 
 #[test]
 fn a_public_key_that_is_not_a_point_is_rejected() {
-    // 0xff..ff is not a valid Edwards point encoding; strict verification must
-    // refuse rather than treat it as some other key.
     let (_node, sig) = sign(7, b"consensus message");
 
     assert!(!verify_signature(&[0xff; 32], b"consensus message", &sig));
@@ -65,8 +63,6 @@ fn a_flipped_signature_byte_is_rejected() {
 
 #[test]
 fn the_signature_is_bound_to_its_payload() {
-    // The payload a validator signs includes the network id; a signature over one
-    // payload must not verify against another.
     let one = [NETWORK.as_slice(), b"slot"].concat();
     let two = [[0x22u8; 32].as_slice(), b"slot"].concat();
     let (node, sig) = sign(7, &one);

@@ -304,4 +304,51 @@ pub fn verify_header(
     bind_header(&value, ledger_header_xdr)
 }
 
+/// Everything needed to authenticate one ledger against the slot that follows it.
+///
+/// `slot` is ledger N; the `successor_*` fields are ledger N+1. The N+1 header is
+/// deliberately absent: it is not trusted, only its signed value and transaction
+/// set are.
+pub struct UpdateEvidence<'a> {
+    pub network_id: &'a [u8; 32],
+    pub slot: u64,
+    pub header_xdr: &'a [u8],
+    pub envelopes_xdr: &'a [alloc::vec::Vec<u8>],
+    pub quorum_sets_xdr: &'a [alloc::vec::Vec<u8>],
+    pub successor_envelopes_xdr: &'a [alloc::vec::Vec<u8>],
+    pub successor_quorum_sets_xdr: &'a [alloc::vec::Vec<u8>],
+    pub successor_tx_set_xdr: &'a [u8],
+}
+
+/// The one way to authenticate a ledger end to end, for both on-chain clients.
+///
+/// It runs the whole sequence in the single correct order so no caller can
+/// reassemble it wrongly: confirm ledger N's value against the pinned trust root,
+/// bind it to N's header, confirm the next slot's value, and pin N with the next
+/// slot's transaction set. The returned header has every field authenticated.
+pub fn verify_update(
+    pinned_root: &QuorumSet,
+    evidence: &UpdateEvidence<'_>,
+) -> Result<AuthenticatedHeader> {
+    let value = verify_consensus(
+        evidence.network_id,
+        pinned_root,
+        evidence.slot,
+        evidence.envelopes_xdr,
+        evidence.quorum_sets_xdr,
+    )?;
+
+    let bound = bind_header(&value, evidence.header_xdr)?;
+
+    let successor = verify_consensus(
+        evidence.network_id,
+        pinned_root,
+        evidence.slot + 1,
+        evidence.successor_envelopes_xdr,
+        evidence.successor_quorum_sets_xdr,
+    )?;
+
+    bind_successor(&bound, &successor, evidence.successor_tx_set_xdr)
+}
+
 extern crate alloc;

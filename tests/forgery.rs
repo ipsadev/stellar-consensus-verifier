@@ -1,6 +1,3 @@
-// Regression: a header whose unsigned fields are rewritten still value-binds
-// (only the scpValue is signed), but it must not be authenticated, because its
-// bytes no longer hash to the predecessor the next slot's transaction set names.
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::{
@@ -52,8 +49,6 @@ fn a_forged_header_is_not_authenticated_by_its_successor() {
     let local = QuorumSet::decode(&unhex(&fx.local_quorum_set)).unwrap();
     let r = &fx.router;
 
-    // Forge header N: keep the signed scpValue, rewrite tx_set_result_hash, which
-    // the validators never signed.
     let mut header_n = unhex(&r.header);
     let real = LedgerHeader::decode(&header_n).unwrap();
     let off = 4 + 32 + real.scp_value_bytes.len();
@@ -64,7 +59,6 @@ fn a_forged_header_is_not_authenticated_by_its_successor() {
         "the forgery must change the header hash"
     );
 
-    // verify_header still accepts it: the scpValue is intact.
     let forged = verify_header(
         &nid,
         &local,
@@ -75,7 +69,6 @@ fn a_forged_header_is_not_authenticated_by_its_successor() {
     )
     .expect("a forged-but-value-consistent header still value-binds");
 
-    // The successor's real evidence pins the true H(N); the forgery cannot match.
     let successor = verify_consensus(
         &nid,
         &local,
