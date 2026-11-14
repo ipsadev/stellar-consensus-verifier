@@ -32,7 +32,7 @@ the three differential tests are `#[ignore]`d, so a plain `cargo test` reports t
 
 ## what's in the build
 
-`Dockerfile` clones stellar-core at `CORE_TAG` (currently `v27.1.0`), runs `./autogen.sh` and
+`Dockerfile` clones stellar-core at `CORE_TAG` (currently `v30.0.0`, pinned to its commit by `CORE_COMMIT`), runs `./autogen.sh` and
 `./configure --disable-tests`, then hands off to `build-oracle.sh`.
 
 `build-oracle.sh` compiles `oracle.cpp` and `stubs.cpp` and links them against stellar-core's own
@@ -50,6 +50,8 @@ touch. it does not fake them. `verify_ed25519_signature_dalek` prints a message 
 that's deliberate. an oracle that quietly returned `true` for a stubbed signature check would turn a
 missing dependency into a passing test, which is the worst possible failure for a tool whose whole job
 is telling you when two implementations disagree.
+
+from v30, stellar-core computes SHA-256 through the rust bridge too (`compute_sha256` and the incremental `RustSha256`), and `src/crypto/SHA.o` will not link without them. `stubs.cpp` implements those on libsodium's `crypto_hash_sha256`, which is already linked, calling `sodium_init()` once before the first hash and keeping the rust side's behaviour that `finalize` resets the state. this is a real SHA-256, not a stand-in: the quorum predicates look quorum sets up by node and never hash at runtime, but in case a future oracle does, a known-answer test on `"abc"` (one-shot and streamed) runs when the binary starts and aborts on a mismatch. `build-oracle.sh` runs the binary once after linking, so a broken hash fails the build.
 
 ## what agreement proves, and what it doesn't
 

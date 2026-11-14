@@ -29,8 +29,8 @@ env:
 jobs:
   differential:
     name: quorum predicates against stellar-core
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: core-oracle/oracle
-          key: core-oracle-${{ runner.os }}-${{ hashFiles('core-oracle/**') }}
+          key: core-oracle-ubuntu-24.04-${{ hashFiles('core-oracle/**') }}
 
       - name: build oracle
         if: steps.cache-oracle.outputs.cache-hit != 'true'
