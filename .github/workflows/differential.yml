@@ -1,0 +1,59 @@
+name: differential
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/primitives/scp/**"
+      - "tests/quorum/**"
+      - "core-oracle/**"
+      - ".github/workflows/differential.yml"
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: generated cases per predicate
+        default: "20000"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: differential-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  differential:
+    name: quorum predicates against stellar-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@1.91.1
+
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: setup just
+        uses: extractions/setup-just@v3
+
+      - name: cache oracle
+        id: cache-oracle
+        uses: actions/cache@v4
+        with:
+          path: core-oracle/oracle
+          key: core-oracle-${{ runner.os }}-${{ hashFiles('core-oracle/**') }}
+
+      - name: build oracle
+        if: steps.cache-oracle.outputs.cache-hit != 'true'
+        run: just oracle
+
+      - name: differential
+        run: just differential core-oracle/oracle ${{ github.event.inputs.cases || (github.event_name == 'schedule' && '200000') || '20000' }}
