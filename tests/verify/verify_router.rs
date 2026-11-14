@@ -65,7 +65,7 @@ fn hexvec(items: &[String]) -> Vec<Vec<u8>> {
 }
 
 fn fixture() -> Fixture {
-    serde_json::from_str(include_str!("fixtures/testnet-router-chain.json")).expect("fixture")
+    serde_json::from_str(include_str!("../fixtures/testnet-router-chain.json")).expect("fixture")
 }
 
 fn trust_root(fx: &Fixture) -> TrustRoot {
@@ -265,8 +265,8 @@ fn bind_successor_rejects_a_tampered_successor_tx_set() {
 
 #[test]
 fn bind_successor_rejects_a_successor_from_another_network() {
-    let mn: MainnetValue =
-        serde_json::from_str(include_str!("fixtures/mainnet-value.json")).expect("mainnet fixture");
+    let mn: MainnetValue = serde_json::from_str(include_str!("../fixtures/mainnet-value.json"))
+        .expect("mainnet fixture");
     let mn_nid = h32(&mn.network_id);
     let mn_xdr = unhex(&mn.local_quorum_set);
     let mn_fingerprint: [u8; 32] = Sha256::digest(&mn_xdr).into();

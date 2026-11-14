@@ -37,7 +37,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn fixture() -> Fixture {
-    serde_json::from_str(include_str!("fixtures/mainnet-ledger-headers.json")).expect("fixture")
+    serde_json::from_str(include_str!("../fixtures/mainnet-ledger-headers.json")).expect("fixture")
 }
 
 #[test]

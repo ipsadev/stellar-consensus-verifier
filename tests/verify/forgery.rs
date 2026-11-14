@@ -44,7 +44,7 @@ fn hexvec(items: &[String]) -> Vec<Vec<u8>> {
 #[test]
 fn a_forged_header_is_not_authenticated_by_its_successor() {
     let fx: Fixture =
-        serde_json::from_str(include_str!("fixtures/testnet-router-chain.json")).unwrap();
+        serde_json::from_str(include_str!("../fixtures/testnet-router-chain.json")).unwrap();
     let nid = h32(&fx.network_id);
     let local_xdr = unhex(&fx.local_quorum_set);
     let fingerprint: [u8; 32] = Sha256::digest(&local_xdr).into();

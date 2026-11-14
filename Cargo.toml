@@ -8,6 +8,7 @@ description = "Stellar SCP consensus verification, with no I/O and no network st
 repository = "https://github.com/ipsadev/stellar-consensus-verifier"
 keywords = ["stellar", "scp", "consensus", "light-client", "verification"]
 categories = ["cryptography", "no-std"]
+exclude = ["core-oracle/"]
 
 [lib]
 name = "stellar_consensus_verifier"
@@ -30,3 +31,96 @@ rust_2018_idioms = { level = "deny", priority = 2 }
 
 [lints.clippy]
 use_self = "warn"
+
+[[test]]
+name = "ballot"
+path = "tests/ballot/ballot.rs"
+
+[[test]]
+name = "ballot_mainnet"
+path = "tests/ballot/ballot_mainnet.rs"
+
+[[test]]
+name = "envelope"
+path = "tests/envelope/envelope.rs"
+
+[[test]]
+name = "envelope_mainnet"
+path = "tests/envelope/envelope_mainnet.rs"
+
+[[test]]
+name = "signature"
+path = "tests/envelope/signature.rs"
+
+[[test]]
+name = "results"
+path = "tests/execution/results.rs"
+
+[[test]]
+name = "quorum"
+path = "tests/quorum/quorum.rs"
+
+[[test]]
+name = "quorum_differential"
+path = "tests/quorum/quorum_differential.rs"
+
+[[test]]
+name = "quorum_mainnet"
+path = "tests/quorum/quorum_mainnet.rs"
+
+[[test]]
+name = "quorum_oracle"
+path = "tests/quorum/quorum_oracle.rs"
+
+[[test]]
+name = "quorum_whitepaper"
+path = "tests/quorum/quorum_whitepaper.rs"
+
+[[test]]
+name = "chain"
+path = "tests/stellar/chain.rs"
+
+[[test]]
+name = "chain_mainnet"
+path = "tests/stellar/chain_mainnet.rs"
+
+[[test]]
+name = "ledger"
+path = "tests/stellar/ledger.rs"
+
+[[test]]
+name = "ledger_mainnet"
+path = "tests/stellar/ledger_mainnet.rs"
+
+[[test]]
+name = "ledger_protocol_30"
+path = "tests/stellar/ledger_protocol_30.rs"
+
+[[test]]
+name = "txset"
+path = "tests/stellar/txset.rs"
+
+[[test]]
+name = "forgery"
+path = "tests/verify/forgery.rs"
+
+[[test]]
+name = "limits"
+path = "tests/verify/limits.rs"
+
+[[test]]
+name = "verify"
+path = "tests/verify/verify.rs"
+
+[[test]]
+name = "verify_mainnet"
+path = "tests/verify/verify_mainnet.rs"
+
+[[test]]
+name = "verify_router"
+path = "tests/verify/verify_router.rs"
+
+[[test]]
+name = "xdr"
+path = "tests/xdr/xdr.rs"
+

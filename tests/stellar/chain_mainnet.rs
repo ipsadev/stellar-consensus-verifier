@@ -18,8 +18,8 @@ fn unhex(s: &str) -> Vec<u8> {
 }
 
 fn fixture() -> (Vec<Vec<u8>>, Vec<[u8; 32]>) {
-    let f: Fixture =
-        serde_json::from_str(include_str!("fixtures/testnet-header-chain.json")).expect("fixture");
+    let f: Fixture = serde_json::from_str(include_str!("../fixtures/testnet-header-chain.json"))
+        .expect("fixture");
     let headers = f.headers_ascending.iter().map(|h| unhex(h)).collect();
     let hashes = f
         .recorded_hashes
