@@ -8,6 +8,7 @@ description = "Stellar SCP consensus verification, with no I/O and no network st
 repository = "https://github.com/ipsadev/stellar-consensus-verifier"
 keywords = ["stellar", "scp", "consensus", "light-client", "verification"]
 categories = ["cryptography", "no-std"]
+exclude = ["core-oracle/"]
 
 [lib]
 name = "stellar_consensus_verifier"
