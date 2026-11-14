@@ -14,6 +14,19 @@ const INVOKE_HOST_FUNCTION_SUCCESS: i32 = 0;
 /// Most transaction-result pairs one ledger may carry, to bound a verifier's work.
 pub const MAX_RESULT_PAIRS: usize = 100_000;
 
+/// Most bytes all result pairs together may be, to bound a verifier's hashing work.
+///
+/// The pair count alone does not bound the work: a few very large pairs hash as
+/// much as many small ones. A busy mainnet ledger's result set is well under this.
+pub const MAX_RESULT_SET_BYTES: usize = 8 * 1024 * 1024;
+
+/// Most bytes a success preimage may be, checked before it is hashed.
+///
+/// Soroban caps a transaction's contract events plus return value far below this
+/// (`txMaxContractEventsSizeBytes`, 16 KiB on mainnet; CAP-46-07), so a real
+/// preimage fits with room for XDR framing and future limit bumps.
+pub const MAX_SUCCESS_PREIMAGE_BYTES: usize = 64 * 1024;
+
 fn bad(what: &str) -> ScpError {
     ScpError::InvalidWire(what.into())
 }
@@ -43,6 +56,15 @@ pub fn verify_result_set_hash(
         });
     }
 
+    let total_bytes: usize = result_pairs.iter().map(Vec::len).sum();
+
+    if total_bytes > MAX_RESULT_SET_BYTES {
+        return Err(ScpError::InputTooLarge {
+            what: "result set",
+            limit: MAX_RESULT_SET_BYTES,
+        });
+    }
+
     let mut hasher = Sha256::new();
 
     hasher.update((result_pairs.len() as u32).to_be_bytes());
@@ -67,6 +89,13 @@ pub fn verify_result_set_hash(
 /// new state root. That root is what a bridge relies on to trust Stellar's
 /// state.
 pub fn verify_state_root(input: &Inputs<'_>) -> Result<[u8; 32]> {
+    if input.success_preimage_xdr.len() > MAX_SUCCESS_PREIMAGE_BYTES {
+        return Err(ScpError::InputTooLarge {
+            what: "success preimage",
+            limit: MAX_SUCCESS_PREIMAGE_BYTES,
+        });
+    }
+
     verify_result_set_hash(input.result_pairs, input.tx_set_result_hash)?;
     let pair = input.result_pairs.get(input.result_index as usize).ok_or(
         ScpError::ResultIndexOutOfRange {
