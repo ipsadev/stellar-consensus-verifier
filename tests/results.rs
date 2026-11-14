@@ -1,7 +1,10 @@
 use serde::Deserialize;
 use stellar_consensus_verifier::{
     error::ScpError,
-    primitives::execution::results::{verify_state_root, Inputs},
+    primitives::execution::results::{
+        verify_result_set_hash, verify_state_root, Inputs, MAX_RESULT_SET_BYTES,
+        MAX_SUCCESS_PREIMAGE_BYTES,
+    },
 };
 
 #[derive(Deserialize)]
@@ -118,4 +121,43 @@ fn verify_state_root_finds_no_root_for_a_different_router() {
     .expect_err("no ibc_root event from the wrong contract");
 
     assert_eq!(err, ScpError::RouterEventMissing);
+}
+
+#[test]
+fn verify_result_set_hash_rejects_an_oversized_result_set() {
+    let pairs = vec![vec![0u8; MAX_RESULT_SET_BYTES], vec![0u8; 1]];
+
+    let err = verify_result_set_hash(&pairs, &[0u8; 32])
+        .expect_err("a result set past the byte limit is refused");
+
+    assert!(matches!(
+        err,
+        ScpError::InputTooLarge {
+            what: "result set",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn verify_state_root_rejects_an_oversized_success_preimage() {
+    let preimage = vec![0u8; MAX_SUCCESS_PREIMAGE_BYTES + 1];
+
+    let err = verify_state_root(&Inputs {
+        tx_set_result_hash: &[0u8; 32],
+        result_pairs: &[],
+        result_index: 0,
+        success_preimage_xdr: &preimage,
+        router_contract_id: &[0u8; 32],
+        root_event_topic: &[],
+    })
+    .expect_err("a success preimage past the byte limit is refused before hashing");
+
+    assert!(matches!(
+        err,
+        ScpError::InputTooLarge {
+            what: "success preimage",
+            ..
+        }
+    ));
 }

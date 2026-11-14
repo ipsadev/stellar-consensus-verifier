@@ -17,7 +17,7 @@ These are the values you must obtain out of band and are trusting by assumption.
 
 Everything else is attacker-controlled and is checked before it is believed: all SCP envelopes, all quorum-set preimages, all ledger-header bytes, all transaction sets, all transaction-result pairs, and anything read from a history archive. No count or hash read from these is trusted until a step below authenticates it.
 
-Each of these is also bounded, so a verifier running under a gas or cycle budget cannot be forced into unbounded work: the number of envelopes (`MAX_ENVELOPES`), quorum-set preimages (`MAX_QUORUM_SETS`), transaction-result pairs (`MAX_RESULT_PAIRS`), transaction-set bytes (`MAX_TRANSACTION_SET_BYTES`), and walk-back steps (`MAX_WALK_BACK_STEPS`) are capped, and over-limit input is refused with `InputTooLarge`. Quorum-set depth and size are already bounded by `QuorumSet::check_sane`, and the XDR decoder caps nesting.
+Each of these is also bounded, so a verifier running under a gas or cycle budget cannot be forced into unbounded work: the number of envelopes (`MAX_ENVELOPES`), quorum-set preimages (`MAX_QUORUM_SETS`), transaction-result pairs (`MAX_RESULT_PAIRS`) and their total bytes (`MAX_RESULT_SET_BYTES`), transaction-set bytes (`MAX_TRANSACTION_SET_BYTES`), success-preimage bytes (`MAX_SUCCESS_PREIMAGE_BYTES`, checked before the preimage is hashed), and walk-back steps (`MAX_WALK_BACK_STEPS`) are capped, and over-limit input is refused with `InputTooLarge`. Quorum-set depth and size are already bounded by `QuorumSet::check_sane`, and the XDR decoder caps nesting. These are resource bounds, not soundness: an over-limit input could never have verified, so refusing it only avoids wasted work.
 
 ## Required call order
 

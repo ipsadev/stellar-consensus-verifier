@@ -2,6 +2,15 @@
 
 All notable changes to this crate are recorded here. It follows semantic versioning: a major bump signals breaking API changes.
 
+## 2.1.0
+
+### Added
+
+- `MAX_RESULT_SET_BYTES` caps the total bytes of all result pairs, checked before hashing, so a few very large pairs cannot make a verifier hash an unbounded amount before the set-hash check fails.
+- `MAX_SUCCESS_PREIMAGE_BYTES` caps the success preimage, checked before it is hashed (Soroban's `txMaxContractEventsSizeBytes` keeps a real preimage far below it).
+
+Both are resource bounds, not soundness fixes: an over-limit input could never have verified. Over-limit input is refused with `InputTooLarge`.
+
 ## 2.0.0
 
 A hardening and restructuring release from the audit. Every consumer must update import paths and move to the `verify` front door; see the migration notes at the end.
