@@ -29,7 +29,7 @@ env:
 jobs:
   differential:
     name: quorum predicates against stellar-core
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - name: checkout
