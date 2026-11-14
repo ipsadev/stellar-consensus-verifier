@@ -73,8 +73,10 @@ impl ConfirmedValue {
 /// Taking a quorum set straight from the evidence is the classic mistake: the
 /// evidence is pledged by the same validators whose signatures are being checked.
 /// `from_pinned` forces you to commit out of band to the fingerprint of the set
-/// you trust and refuses anything else, and it checks the set is BFT-sound, so a
-/// quorum set read from the evidence cannot reach the verifier by accident.
+/// you trust and refuses anything else, so a quorum set read from the evidence
+/// cannot reach the verifier by accident. It also checks every level of the set
+/// has a strict-majority threshold, which makes any two slices intersect but
+/// does not make them intersect in an honest validator; see `SECURITY.md`.
 #[derive(Clone, Debug)]
 pub struct TrustRoot {
     quorum_set: QuorumSet,
@@ -104,12 +106,13 @@ impl TrustRoot {
     }
 }
 
-/// A header proven to carry the value consensus agreed on.
+/// A header whose scpValue span is the value consensus agreed on.
 ///
-/// This authenticates the ledger's identity: its transaction set, close time and
-/// upgrades. It does not authenticate `tx_set_result_hash` or `bucket_list_hash`,
-/// because validators sign the scpValue, not the whole header. Promote it with
-/// [`bind_successor`] or reach it with [`walk_back`] before trusting those fields.
+/// Only the fields inside that span are authenticated: the transaction set,
+/// close time and upgrades. Every other byte is unsigned, so `ledger_hash` is
+/// not yet the real ledger hash, and `tx_set_result_hash`, `bucket_list_hash`
+/// and `previous_ledger_hash` are not trustworthy. Promote it with
+/// [`bind_successor`] or reach it with [`walk_back`] before relying on them.
 #[derive(Clone, Debug)]
 pub struct ValueBoundHeader {
     network_id: [u8; 32],
