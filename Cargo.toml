@@ -41,6 +41,10 @@ name = "ballot_mainnet"
 path = "tests/ballot/ballot_mainnet.rs"
 
 [[test]]
+name = "statement"
+path = "tests/ballot/statement.rs"
+
+[[test]]
 name = "envelope"
 path = "tests/envelope/envelope.rs"
 
@@ -55,6 +59,10 @@ path = "tests/envelope/signature.rs"
 [[test]]
 name = "results"
 path = "tests/execution/results.rs"
+
+[[test]]
+name = "execution"
+path = "tests/execution/execution.rs"
 
 [[test]]
 name = "quorum"

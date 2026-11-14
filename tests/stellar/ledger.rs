@@ -168,6 +168,18 @@ fn the_header_extension_v1_is_accepted() {
 }
 
 #[test]
+fn an_unknown_extension_inside_header_extension_v1_is_refused() {
+    let mut tail = header_ext_v1(3);
+    let last = tail.len() - 1;
+
+    tail[last] = 1;
+
+    let raw = header_with_ext_v(1, &tail);
+
+    assert!(LedgerHeader::decode(&raw).is_err());
+}
+
+#[test]
 fn an_unknown_header_extension_is_refused() {
     let raw = header_with_ext_v(2, &[]);
 

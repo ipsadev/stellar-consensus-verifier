@@ -27,6 +27,20 @@ fn var_bytes(value: &[u8]) -> Vec<u8> {
     out
 }
 
+fn optional_ballot(ballot: &Option<Ballot>) -> Vec<u8> {
+    match ballot {
+        None => 0u32.to_be_bytes().to_vec(),
+        Some(b) => {
+            let mut out = 1u32.to_be_bytes().to_vec();
+
+            out.extend_from_slice(&b.counter.to_be_bytes());
+            out.extend_from_slice(&var_bytes(&b.value));
+
+            out
+        }
+    }
+}
+
 fn envelope_xdr(seed: u8, slot: u64, statement: &Statement, qset_hash: [u8; 32]) -> Vec<u8> {
     signed_by(seed, seed, slot, statement, qset_hash)
 }
@@ -49,10 +63,8 @@ fn signed_by(
             out.extend_from_slice(&qset_hash);
             out.extend_from_slice(&p.ballot.counter.to_be_bytes());
             out.extend_from_slice(&var_bytes(&p.ballot.value));
-            out.extend_from_slice(&1u32.to_be_bytes());
-            out.extend_from_slice(&p.ballot.counter.to_be_bytes());
-            out.extend_from_slice(&var_bytes(&p.ballot.value));
-            out.extend_from_slice(&0u32.to_be_bytes());
+            out.extend_from_slice(&optional_ballot(&p.prepared));
+            out.extend_from_slice(&optional_ballot(&p.prepared_prime));
             out.extend_from_slice(&p.commit_counter.to_be_bytes());
             out.extend_from_slice(&p.highest_confirmed_ballot_counter.to_be_bytes());
         }
@@ -543,4 +555,181 @@ fn a_signature_over_another_network_stops_authentication() {
         .expect_err("the network id is inside the signed payload");
 
     assert!(matches!(err, ScpError::UnauthenticatedEnvelope { .. }));
+}
+
+#[test]
+fn a_prepare_with_a_higher_prepared_prime_replaces_an_older_one() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let older = Statement::Prepare(Prepare {
+        quorum_set_hash: [0x11; 32],
+        ballot: ballot(4, VALUE),
+        prepared: Some(ballot(3, VALUE)),
+        prepared_prime: None,
+        commit_counter: 0,
+        highest_confirmed_ballot_counter: 0,
+    });
+    let newer = Statement::Prepare(Prepare {
+        quorum_set_hash: [0x11; 32],
+        ballot: ballot(4, VALUE),
+        prepared: Some(ballot(3, VALUE)),
+        prepared_prime: Some(ballot(2, OTHER)),
+        commit_counter: 0,
+        highest_confirmed_ballot_counter: 0,
+    });
+    let members = [(1, newer), (1, older)];
+    let latest = latest_statements(&evidence_per_node(&members, &local));
+
+    assert_eq!(latest.len(), 1);
+    assert!(matches!(
+        latest[0].statement(),
+        Statement::Prepare(Prepare {
+            prepared_prime: Some(_),
+            ..
+        })
+    ));
+}
+
+#[test]
+fn a_malformed_prepare_envelope_stops_authentication() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let raw = encode_set(&local);
+    let hash = QuorumSet::hash(&raw);
+    let malformed = Statement::Prepare(Prepare {
+        quorum_set_hash: hash,
+        ballot: ballot(3, VALUE),
+        prepared: Some(ballot(2, VALUE)),
+        prepared_prime: Some(ballot(1, VALUE)),
+        commit_counter: 0,
+        highest_confirmed_ballot_counter: 0,
+    });
+    let envelopes = vec![envelope_xdr(1, SLOT, &malformed, hash)];
+    let err = authenticate(&NETWORK, SLOT, &envelopes, &[raw])
+        .expect_err("a prepared' compatible with prepared is not a statement stellar-core sends");
+
+    assert_eq!(err, ScpError::MalformedPrepare);
+}
+
+#[test]
+fn a_malformed_confirm_envelope_stops_authentication() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let raw = encode_set(&local);
+    let hash = QuorumSet::hash(&raw);
+    let malformed = Statement::Confirm(Confirm {
+        ballot: ballot(2, VALUE),
+        prepared_counter: 2,
+        commit_counter: 1,
+        highest_confirmed_ballot_counter: 3,
+        quorum_set_hash: hash,
+    });
+    let envelopes = vec![envelope_xdr(1, SLOT, &malformed, hash)];
+    let err = authenticate(&NETWORK, SLOT, &envelopes, &[raw])
+        .expect_err("a confirmed counter above the ballot is not a statement stellar-core sends");
+
+    assert_eq!(err, ScpError::MalformedConfirm);
+}
+
+#[test]
+fn a_zero_counter_prepare_envelope_stops_authentication() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let raw = encode_set(&local);
+    let hash = QuorumSet::hash(&raw);
+    let zero = Statement::Prepare(Prepare {
+        quorum_set_hash: hash,
+        ballot: ballot(0, VALUE),
+        prepared: None,
+        prepared_prime: None,
+        commit_counter: 0,
+        highest_confirmed_ballot_counter: 0,
+    });
+    let envelopes = vec![envelope_xdr(1, SLOT, &zero, hash)];
+    let err = authenticate(&NETWORK, SLOT, &envelopes, &[raw])
+        .expect_err("a ballot counter of zero is never sent");
+
+    assert_eq!(err, ScpError::BallotCounterZero);
+}
+
+#[test]
+fn the_interval_search_skips_a_boundary_above_the_fixed_high_bound() {
+    let found = find_extended_interval(&[1, 9, 5], |(_, high)| high <= 5);
+
+    assert_eq!(found, Some((1, 5)));
+}
+
+#[test]
+fn a_quorum_set_preimage_that_is_not_sane_is_dropped() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let insane = flat(&[1, 2, 3, 4], 5);
+    let raw = encode_set(&insane);
+    let hash = QuorumSet::hash(&raw);
+    let envelopes = vec![envelope_xdr(
+        1,
+        SLOT,
+        &confirm_under(1, 1, VALUE, hash),
+        hash,
+    )];
+    let evidence = authenticate(&NETWORK, SLOT, &envelopes, &[raw])
+        .expect("an unusable preimage is dropped, not fatal");
+
+    assert_eq!(evidence.len(), 1);
+    assert!(evidence[0].quorum_set().is_none());
+    assert!(confirmed_commit(&local, &evidence, VALUE).is_none());
+}
+
+#[test]
+fn only_a_non_externalize_statement_declares_its_quorum_set() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let raw = encode_set(&local);
+    let hash = QuorumSet::hash(&raw);
+    let envelopes = vec![
+        envelope_xdr(1, SLOT, &confirm_under(1, 1, VALUE, hash), hash),
+        envelope_xdr(2, SLOT, &externalize(1, 1, VALUE), hash),
+    ];
+    let evidence = authenticate(&NETWORK, SLOT, &envelopes, &[raw]).expect("authenticates");
+
+    assert_eq!(evidence[0].declared_quorum_set(), Some(&local));
+    assert_eq!(evidence[1].declared_quorum_set(), None);
+    assert_eq!(
+        evidence[1].quorum_set(),
+        Some(&singleton_quorum_set(node(2)))
+    );
+}
+
+#[test]
+fn a_quorum_set_preimage_that_does_not_decode_is_dropped() {
+    let garbage = vec![0xff; 7];
+    let hash = QuorumSet::hash(&garbage);
+    let envelopes = vec![envelope_xdr(
+        1,
+        SLOT,
+        &confirm_under(1, 1, VALUE, hash),
+        hash,
+    )];
+    let evidence = authenticate(&NETWORK, SLOT, &envelopes, &[garbage])
+        .expect("an undecodable preimage is dropped, not fatal");
+
+    assert!(evidence[0].quorum_set().is_none());
+}
+
+#[test]
+fn an_optional_ballot_flag_other_than_zero_or_one_stops_authentication() {
+    let local = flat(&[1, 2, 3, 4], 3);
+    let raw = encode_set(&local);
+    let hash = QuorumSet::hash(&raw);
+    let statement = Statement::Prepare(Prepare {
+        quorum_set_hash: hash,
+        ballot: ballot(1, VALUE),
+        prepared: None,
+        prepared_prime: None,
+        commit_counter: 0,
+        highest_confirmed_ballot_counter: 0,
+    });
+    let mut envelope = envelope_xdr(1, SLOT, &statement, hash);
+    let flag = 4 + 32 + 8 + 4 + 32 + 4 + var_bytes(VALUE).len() + 3;
+
+    envelope[flag] = 2;
+
+    let err = authenticate(&NETWORK, SLOT, &[envelope], &[raw])
+        .expect_err("an XDR optional is present or absent, nothing else");
+
+    assert!(matches!(err, ScpError::InvalidWire(_)));
 }

@@ -133,32 +133,63 @@ fn the_unmutated_update_authenticates() {
 }
 
 #[test]
-fn every_attack_on_the_update_is_rejected() {
+fn every_attack_on_the_update_is_rejected_by_the_check_meant_for_it() {
     type Mutate = fn(&mut Evidence);
+    type Expect = fn(&ScpError) -> bool;
 
-    let attacks: &[(&str, Mutate)] = &[
-        ("wrong network", |e| e.network_id[0] ^= 0x01),
-        ("wrong slot", |e| e.slot += 1),
-        ("tampered signed value", flip_inside_scp_value),
-        ("tampered previous-ledger hash", |e| e.header[4] ^= 0x01),
-        ("foreign trust root", |e| {
-            e.trust_root_xdr = strangers_quorum_set()
+    let attacks: &[(&str, Mutate, Expect)] = &[
+        (
+            "wrong network",
+            |e| e.network_id[0] ^= 0x01,
+            |err| matches!(err, ScpError::UnauthenticatedEnvelope { .. }),
+        ),
+        (
+            "wrong slot",
+            |e| e.slot += 1,
+            |err| matches!(err, ScpError::EnvelopeSlotMismatch { .. }),
+        ),
+        ("tampered signed value", flip_inside_scp_value, |err| {
+            matches!(err, ScpError::HeaderValueMismatch)
         }),
-        ("no envelopes", |e| e.envelopes.clear()),
-        ("no successor envelopes", |e| e.successor_envelopes.clear()),
-        ("tampered successor tx set", |e| {
-            e.successor_tx_set[40] ^= 0x01
-        }),
+        (
+            "tampered previous-ledger hash",
+            |e| e.header[4] ^= 0x01,
+            |err| matches!(err, ScpError::ChainBroken { .. }),
+        ),
+        (
+            "foreign trust root",
+            |e| e.trust_root_xdr = strangers_quorum_set(),
+            |err| matches!(err, ScpError::NoConfirmedCommit),
+        ),
+        (
+            "no envelopes",
+            |e| e.envelopes.clear(),
+            |err| matches!(err, ScpError::NoBallotEvidence),
+        ),
+        (
+            "no successor envelopes",
+            |e| e.successor_envelopes.clear(),
+            |err| matches!(err, ScpError::NoBallotEvidence),
+        ),
+        (
+            "tampered successor tx set",
+            |e| e.successor_tx_set[40] ^= 0x01,
+            |err| matches!(err, ScpError::SuccessorTxSetMismatch),
+        ),
     ];
 
-    for (name, mutate) in attacks {
+    for (name, mutate, expected) in attacks {
         let mut evidence = Evidence::baseline();
 
         mutate(&mut evidence);
 
+        let err = evidence
+            .run()
+            .expect_err(&format!("{name}: verify_update accepted a mutated update"));
+
         assert!(
-            evidence.run().is_err(),
-            "{name}: verify_update accepted a mutated update"
+            expected(&err),
+            "{name}: rejected for the wrong reason: {err:?}"
         );
     }
 }
