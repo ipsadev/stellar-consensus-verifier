@@ -34,9 +34,13 @@ pub enum ScpError {
     #[error("the header is for ledger {found}, not the slot {expected} that was authenticated")]
     HeaderSlotMismatch { expected: u64, found: u64 },
     #[error("the successor is ledger {found}, not the {expected} that would follow")]
-    SuccessorNotNext { expected: u32, found: u32 },
+    SuccessorNotNext { expected: u64, found: u64 },
     #[error("the successor transaction set does not hash to the value its validators signed")]
     SuccessorTxSetMismatch,
+    #[error("the header and its successor are from different networks")]
+    NetworkMismatch,
+    #[error("the quorum set does not match the pinned trust-root fingerprint")]
+    TrustRootFingerprintMismatch,
     #[error("the EXTERNALIZE commit ballot has an empty value")]
     EmptyCommitValue,
     #[error("the highest confirmed ballot counter {highest} is below the commit counter {commit}")]

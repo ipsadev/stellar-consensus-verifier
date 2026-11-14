@@ -9,7 +9,7 @@ A passing verification is only as strong as two things you supply and this crate
 These are the values you must obtain out of band and are trusting by assumption. The crate treats them as ground truth.
 
 - The network identifier (`network_id`), which fixes the network and is folded into every signature check so a message from one network cannot be replayed on another.
-- Your local quorum set (the `local: &QuorumSet` passed to the commit checks). This is your trust root: the validators you trust and the thresholds among them. The crate never derives this from the archive, because that would let whoever writes the archive decide who counts.
+- Your trust root, built with `TrustRoot::from_pinned(quorum_set_xdr, expected_fingerprint)`: the validators you trust and the thresholds among them. You pin its fingerprint out of band, so a quorum set read from the archive — pledged by the very validators being checked — cannot be passed in by mistake. `from_pinned` also checks the set is BFT-sound.
 - An anchor ledger hash you already trust, when using `chain::walk_back` to reach an older ledger.
 - The router contract identifier and the root event topic (`router_contract_id`, `root_event_topic` in `results::Inputs`), which say whose published state root you are willing to believe.
 
@@ -19,7 +19,7 @@ Everything else is attacker-controlled and is checked before it is believed: all
 
 ## Required call order
 
-The `verify` module is the front door and the recommended way to use this crate. It carries trust in the types: each step takes the value the previous step produced and returns a new one whose fields are private, so holding a value is proof the earlier checks ran. The pipeline is `authenticate` → `AuthenticatedBatch`, `confirmed_value` → `ConfirmedValue`, `bind_header` → `ValueBoundHeader`, then either `bind_successor` or `walk_back` → `AuthenticatedHeader`, then `verify_router_root` → `VerifiedRouterRoot`. `verify_consensus` and `verify_header` are convenience wrappers for the first steps, and `confirmed_value` enforces the strict trust-root check (`local.check_sane(true)`).
+The `verify` module is the front door and the recommended way to use this crate. It carries trust in the types: each step takes the value the previous step produced and returns a new one whose fields are private, so holding a value is proof the earlier checks ran. The pipeline is `authenticate` → `AuthenticatedBatch`, `confirmed_value` → `ConfirmedValue`, `bind_header` → `ValueBoundHeader`, then either `bind_successor` or `walk_back` → `AuthenticatedHeader`, then `verify_router_root` → `VerifiedRouterRoot`. `verify_consensus` and `verify_header` are convenience wrappers for the first steps, and `verify_update` runs the whole update in one call. The trust root is checked for BFT-soundness once, when you build it with `TrustRoot::from_pinned`.
 
 The two header types encode the `bind_header` rule. A `ValueBoundHeader` has its transaction set, close time and upgrades authenticated, but not its `tx_set_result_hash` or `bucket_list_hash`, because validators sign the scpValue, not the whole header. Only an `AuthenticatedHeader` — whose whole-bytes hash is pinned by the next slot's transaction set (`bind_successor`) or by the chain (`walk_back`) — has every field authenticated, and only an `AuthenticatedHeader` can be passed to `verify_router_root`. A caller therefore cannot extract a router state root from a header whose results field was never authenticated; the code will not compile.
 
@@ -68,8 +68,8 @@ The following are addressed when you use the `verify` module, and remain the cal
 - The value-to-header binding is done by `verify::bind_header`, which returns a `ValueBoundHeader`. Callers using the raw `envelope::authenticate`/`commit::confirmed_value` primitives must perform the `scp_value_bytes` comparison themselves.
 - `verify::verify_router_root` takes an `AuthenticatedHeader`, not a raw hash, so trust is carried in the type. The raw `results::verify_state_root` and `chain::walk_back` still take plain `&[u8; 32]` hashes with no evidence of origin; a caller using them directly must feed only authenticated hashes.
 - `LedgerHeader` has all-public fields, so a bare header can be constructed or edited. The `verify` types wrap it behind private fields, and `verify_router_root` refuses anything but an `AuthenticatedHeader`; the bare type is only safe through that layer.
-- `verify::confirmed_value` runs the strict `local.check_sane(true)` and refuses an unsound trust root. The raw `commit::confirmed_value` primitive does not.
-- `AuthenticatedBatch` and `ConfirmedValue` carry their network identifier and slot, so the typed pipeline cannot combine evidence from different networks or slots. The raw `Authenticated` does not carry this context, so callers mixing raw batches must check it themselves.
+- `TrustRoot::from_pinned` checks the trust root is BFT-sound and matches the pinned fingerprint when it is built, so every `verify` entry point already holds a sound, pinned root. The raw `commit::confirmed_value` primitive takes a bare `QuorumSet` and checks neither.
+- The typed values carry their network and slot end to end: `AuthenticatedBatch`, `ConfirmedValue`, `ValueBoundHeader` and `AuthenticatedHeader` all record the network, and `bind_successor` refuses a header and successor from different networks, so the pipeline cannot mix networks or slots. The raw `Authenticated` does not carry this context, so callers mixing raw batches must check it themselves.
 
 These remain open regardless of which layer you use:
 

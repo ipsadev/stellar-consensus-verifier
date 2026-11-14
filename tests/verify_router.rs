@@ -1,10 +1,10 @@
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::{
     error::ScpError,
-    primitives::scp::quorum::QuorumSet,
     verify::{
         bind_successor, verify_consensus, verify_header, verify_router_root, verify_update,
-        ConfirmedValue, UpdateEvidence,
+        ConfirmedValue, TrustRoot, UpdateEvidence,
     },
 };
 
@@ -57,7 +57,14 @@ fn fixture() -> Fixture {
     serde_json::from_str(include_str!("fixtures/testnet-router-chain.json")).expect("fixture")
 }
 
-fn successor_value(fx: &Fixture, nid: &[u8; 32], local: &QuorumSet) -> ConfirmedValue {
+fn trust_root(fx: &Fixture) -> TrustRoot {
+    let xdr = unhex(&fx.local_quorum_set);
+    let fingerprint: [u8; 32] = Sha256::digest(&xdr).into();
+
+    TrustRoot::from_pinned(&xdr, &fingerprint).expect("pinned sound trust root")
+}
+
+fn successor_value(fx: &Fixture, nid: &[u8; 32], local: &TrustRoot) -> ConfirmedValue {
     verify_consensus(
         nid,
         local,
@@ -72,7 +79,7 @@ fn successor_value(fx: &Fixture, nid: &[u8; 32], local: &QuorumSet) -> Confirmed
 fn the_typed_pipeline_extracts_a_router_root_from_a_real_testnet_ledger() {
     let fx = fixture();
     let nid = h32(&fx.network_id);
-    let local = QuorumSet::decode(&unhex(&fx.local_quorum_set)).expect("local quorum set");
+    let local = trust_root(&fx);
     let r = &fx.router;
 
     let router_bound = verify_header(
@@ -113,7 +120,7 @@ fn the_typed_pipeline_extracts_a_router_root_from_a_real_testnet_ledger() {
 fn verify_update_authenticates_the_router_ledger_in_one_call() {
     let fx = fixture();
     let nid = h32(&fx.network_id);
-    let local = QuorumSet::decode(&unhex(&fx.local_quorum_set)).expect("local quorum set");
+    let local = trust_root(&fx);
     let r = &fx.router;
 
     let header = unhex(&r.header);
@@ -154,10 +161,77 @@ fn verify_update_authenticates_the_router_ledger_in_one_call() {
 }
 
 #[test]
+fn verify_update_rejects_reusing_the_ledger_evidence_for_its_successor() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = trust_root(&fx);
+    let r = &fx.router;
+
+    let header = unhex(&r.header);
+    let envelopes = hexvec(&r.envelopes);
+    let quorum_sets = hexvec(&r.quorum_sets);
+    let successor_tx_set = unhex(&fx.successor.tx_set);
+
+    let err = verify_update(
+        &local,
+        &UpdateEvidence {
+            network_id: &nid,
+            slot: r.slot,
+            header_xdr: &header,
+            envelopes_xdr: &envelopes,
+            quorum_sets_xdr: &quorum_sets,
+            successor_envelopes_xdr: &envelopes,
+            successor_quorum_sets_xdr: &quorum_sets,
+            successor_tx_set_xdr: &successor_tx_set,
+        },
+    )
+    .expect_err("ledger N's envelopes are not evidence for the next slot");
+
+    assert_eq!(
+        err,
+        ScpError::EnvelopeSlotMismatch {
+            expected: r.slot + 1,
+            found: r.slot,
+        }
+    );
+}
+
+#[test]
+fn verify_update_rejects_the_wrong_network() {
+    let fx = fixture();
+    let local = trust_root(&fx);
+    let r = &fx.router;
+
+    let header = unhex(&r.header);
+    let envelopes = hexvec(&r.envelopes);
+    let quorum_sets = hexvec(&r.quorum_sets);
+    let successor_envelopes = hexvec(&fx.successor.envelopes);
+    let successor_quorum_sets = hexvec(&fx.successor.quorum_sets);
+    let successor_tx_set = unhex(&fx.successor.tx_set);
+
+    let err = verify_update(
+        &local,
+        &UpdateEvidence {
+            network_id: &[0u8; 32],
+            slot: r.slot,
+            header_xdr: &header,
+            envelopes_xdr: &envelopes,
+            quorum_sets_xdr: &quorum_sets,
+            successor_envelopes_xdr: &successor_envelopes,
+            successor_quorum_sets_xdr: &successor_quorum_sets,
+            successor_tx_set_xdr: &successor_tx_set,
+        },
+    )
+    .expect_err("evidence does not verify under the wrong network");
+
+    assert!(matches!(err, ScpError::UnauthenticatedEnvelope { .. }));
+}
+
+#[test]
 fn bind_successor_rejects_a_tampered_successor_tx_set() {
     let fx = fixture();
     let nid = h32(&fx.network_id);
-    let local = QuorumSet::decode(&unhex(&fx.local_quorum_set)).expect("local quorum set");
+    let local = trust_root(&fx);
 
     let router_bound = verify_header(
         &nid,

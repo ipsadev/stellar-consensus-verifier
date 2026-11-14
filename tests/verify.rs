@@ -2,8 +2,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::{
     error::ScpError,
-    primitives::scp::quorum::QuorumSet,
-    verify::{verify_consensus, verify_header},
+    verify::{verify_consensus, verify_header, TrustRoot},
 };
 
 const LIVE_PASSPHRASE: &str = "Public Global Stellar Network ; September 2015";
@@ -43,6 +42,10 @@ fn unhex(s: &str) -> Vec<u8> {
         .collect()
 }
 
+fn hexvec(items: &[String]) -> Vec<Vec<u8>> {
+    items.iter().map(|s| unhex(s)).collect()
+}
+
 fn slots() -> Slots {
     serde_json::from_str(include_str!("fixtures/mainnet-slots.json")).expect("slots fixture")
 }
@@ -62,8 +65,11 @@ fn network_id(network: &str) -> [u8; 32] {
     Sha256::digest(passphrase.as_bytes()).into()
 }
 
-fn local_of(slot: &Slot) -> QuorumSet {
-    QuorumSet::decode(&unhex(&slot.local_quorum_set)).expect("local quorum set")
+fn trust_root(slot: &Slot) -> Result<TrustRoot, ScpError> {
+    let xdr = unhex(&slot.local_quorum_set);
+    let fingerprint: [u8; 32] = Sha256::digest(&xdr).into();
+
+    TrustRoot::from_pinned(&xdr, &fingerprint)
 }
 
 fn header_for(slot: &Slot) -> Option<Vec<u8>> {
@@ -75,43 +81,34 @@ fn header_for(slot: &Slot) -> Option<Vec<u8>> {
 }
 
 #[test]
-fn verify_consensus_verifies_sound_roots_and_refuses_weak_ones() {
+fn a_pinned_sound_root_verifies_and_a_weak_one_is_refused_at_pinning() {
     let mut sound = 0;
 
     for slot in &slots().slots {
-        let local = local_of(slot);
-        let result = verify_consensus(
-            &network_id(&slot.network),
-            &local,
-            slot.slot,
-            &slot.envelopes.iter().map(|s| unhex(s)).collect::<Vec<_>>(),
-            &slot
-                .quorum_sets
-                .iter()
-                .map(|s| unhex(s))
-                .collect::<Vec<_>>(),
-        );
+        match trust_root(slot) {
+            Ok(root) => {
+                let confirmed = verify_consensus(
+                    &network_id(&slot.network),
+                    &root,
+                    slot.slot,
+                    &hexvec(&slot.envelopes),
+                    &hexvec(&slot.quorum_sets),
+                )
+                .unwrap_or_else(|e| panic!("{} slot {}: {e}", slot.network, slot.slot));
 
-        if local.check_sane(true).is_ok() {
-            let confirmed =
-                result.unwrap_or_else(|e| panic!("{} slot {}: {e}", slot.network, slot.slot));
-
-            assert_eq!(
-                confirmed.value_bytes(),
-                unhex(&slot.expected_value).as_slice(),
-                "{} slot {}",
+                assert_eq!(
+                    confirmed.value_bytes(),
+                    unhex(&slot.expected_value).as_slice()
+                );
+                assert_eq!(confirmed.slot(), slot.slot);
+                sound += 1;
+            }
+            Err(e) => assert!(
+                matches!(e, ScpError::InvalidWire(_)),
+                "{} slot {}: a sub-majority trust root must be refused when pinned",
                 slot.network,
                 slot.slot
-            );
-            assert_eq!(confirmed.slot(), slot.slot);
-            sound += 1;
-        } else {
-            assert!(
-                matches!(result, Err(ScpError::InvalidWire(_))),
-                "{} slot {}: a sub-majority trust root must be refused by the strict gate",
-                slot.network,
-                slot.slot
-            );
+            ),
         }
     }
 
@@ -126,24 +123,19 @@ fn verify_header_binds_the_value_to_its_ledger() {
     let mut checked = 0;
 
     for slot in &slots().slots {
-        if local_of(slot).check_sane(true).is_err() {
+        let Ok(root) = trust_root(slot) else {
             continue;
-        }
-
+        };
         let Some(header_xdr) = header_for(slot) else {
             continue;
         };
 
         let bound = verify_header(
             &network_id(&slot.network),
-            &local_of(slot),
+            &root,
             slot.slot,
-            &slot.envelopes.iter().map(|s| unhex(s)).collect::<Vec<_>>(),
-            &slot
-                .quorum_sets
-                .iter()
-                .map(|s| unhex(s))
-                .collect::<Vec<_>>(),
+            &hexvec(&slot.envelopes),
+            &hexvec(&slot.quorum_sets),
             &header_xdr,
         )
         .unwrap_or_else(|e| {
@@ -155,6 +147,7 @@ fn verify_header_binds_the_value_to_its_ledger() {
 
         assert_eq!(bound.header().scp_value_bytes, unhex(&slot.expected_value));
         assert_eq!(u64::from(bound.header().ledger_seq), slot.slot);
+        assert_eq!(bound.network_id(), &network_id(&slot.network));
         checked += 1;
     }
 
@@ -170,8 +163,9 @@ fn verify_header_rejects_a_header_from_another_ledger() {
     let slot = slots
         .slots
         .iter()
-        .find(|s| local_of(s).check_sane(true).is_ok())
+        .find(|s| trust_root(s).is_ok())
         .expect("a BFT-sound slot to test the binding step rather than the trust-root gate");
+    let root = trust_root(slot).unwrap();
 
     let wrong = headers()
         .headers
@@ -182,14 +176,10 @@ fn verify_header_rejects_a_header_from_another_ledger() {
 
     let err = verify_header(
         &network_id(&slot.network),
-        &local_of(slot),
+        &root,
         slot.slot,
-        &slot.envelopes.iter().map(|s| unhex(s)).collect::<Vec<_>>(),
-        &slot
-            .quorum_sets
-            .iter()
-            .map(|s| unhex(s))
-            .collect::<Vec<_>>(),
+        &hexvec(&slot.envelopes),
+        &hexvec(&slot.quorum_sets),
         &wrong,
     )
     .expect_err("a header from a different ledger must not bind");
@@ -204,28 +194,17 @@ fn verify_header_rejects_a_header_from_another_ledger() {
 }
 
 #[test]
-fn verify_consensus_refuses_an_unsound_trust_root() {
+fn from_pinned_refuses_a_quorum_set_that_is_not_the_pinned_one() {
     let slots = slots();
-    let slot = &slots.slots[0];
+    let slot = slots
+        .slots
+        .iter()
+        .find(|s| trust_root(s).is_ok())
+        .expect("a BFT-sound slot");
 
-    let unsound = QuorumSet {
-        threshold: 1,
-        validators: vec![[1u8; 32], [2u8; 32], [3u8; 32]],
-        inner_sets: Vec::new(),
-    };
+    let xdr = unhex(&slot.local_quorum_set);
+    let err = TrustRoot::from_pinned(&xdr, &[0u8; 32])
+        .expect_err("a quorum set that does not match the pinned fingerprint is refused");
 
-    let err = verify_consensus(
-        &network_id(&slot.network),
-        &unsound,
-        slot.slot,
-        &slot.envelopes.iter().map(|s| unhex(s)).collect::<Vec<_>>(),
-        &slot
-            .quorum_sets
-            .iter()
-            .map(|s| unhex(s))
-            .collect::<Vec<_>>(),
-    )
-    .expect_err("a trust root below its v-blocking size must be refused");
-
-    assert!(matches!(err, ScpError::InvalidWire(_)));
+    assert_eq!(err, ScpError::TrustRootFingerprintMismatch);
 }
