@@ -44,8 +44,9 @@ pub struct EmptyTxSet {
 #[derive(Clone, Debug)]
 /// A closed Stellar ledger.
 ///
-/// `ledger_hash` is computed from the bytes, so it is the ledger's real
-/// identity rather than a claim. `scp_value_bytes` is the exact slice the
+/// `ledger_hash` is computed from the supplied bytes, so it names exactly
+/// those bytes; it is the real ledger's hash only once the bytes are
+/// authenticated through `verify`. `scp_value_bytes` is the exact slice the
 /// validators agreed on, ready to compare against their signed messages.
 pub struct LedgerHeader {
     pub ledger_version: u32,
