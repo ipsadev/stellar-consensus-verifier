@@ -9,6 +9,7 @@ use crate::{
 };
 
 const TX_SUCCESS: i32 = 0;
+const TX_FEE_BUMP_INNER_SUCCESS: i32 = 1;
 const OP_INNER: i32 = 0;
 const OP_TYPE_INVOKE_HOST_FUNCTION: i32 = 24;
 const INVOKE_HOST_FUNCTION_SUCCESS: i32 = 0;
@@ -91,8 +92,8 @@ pub fn verify_result_set_hash(
 /// Proves a transaction succeeded and returns the state root it published.
 ///
 /// Checks the results belong to the ledger, that the named transaction
-/// succeeded, that it was a contract call, and that the contract announced a
-/// new state root. That root is what a bridge relies on to trust Stellar's
+/// succeeded, directly or as the inner transaction of a fee-bump, that it was a
+/// contract call, and that the contract announced a new state root. That root is what a bridge relies on to trust Stellar's
 /// state.
 pub fn verify_state_root(input: &Inputs<'_>) -> Result<[u8; 32]> {
     if input.success_preimage_xdr.len() > MAX_SUCCESS_PREIMAGE_BYTES {
@@ -127,12 +128,33 @@ fn invoke_success_hash(pair: &[u8]) -> Result<[u8; 32]> {
     let mut d = Decoder::new(pair);
     let _transaction_hash = d.fixed32()?;
     let _fee_charged = d.u64()?;
+    let success = match d.i32()? {
+        TX_SUCCESS => invoke_operation_success(&mut d)?,
+        TX_FEE_BUMP_INNER_SUCCESS => {
+            let _inner_transaction_hash = d.fixed32()?;
+            let _inner_fee_charged = d.u64()?;
 
-    match d.i32()? {
-        TX_SUCCESS => {}
+            match d.i32()? {
+                TX_SUCCESS => {}
+                other => return Err(ScpError::TransactionNotSuccessful { code: other }),
+            }
+
+            let success = invoke_operation_success(&mut d)?;
+
+            result_extension(&mut d, "InnerTransactionResult")?;
+
+            success
+        }
         other => return Err(ScpError::TransactionNotSuccessful { code: other }),
-    }
+    };
 
+    result_extension(&mut d, "TransactionResult")?;
+    d.finish()?;
+
+    Ok(success)
+}
+
+fn invoke_operation_success(d: &mut Decoder<'_>) -> Result<[u8; 32]> {
     let n_ops = d.vec_len(1)?;
 
     if n_ops != 1 {
@@ -152,20 +174,14 @@ fn invoke_success_hash(pair: &[u8]) -> Result<[u8; 32]> {
         other => return Err(ScpError::InvokeHostFunctionFailed { code: other }),
     }
 
-    let success = d.fixed32()?;
+    d.fixed32()
+}
 
+fn result_extension(d: &mut Decoder<'_>, what: &str) -> Result<()> {
     match d.i32()? {
-        0 => {}
-        other => {
-            return Err(bad(&alloc::format!(
-                "unsupported TransactionResult ext {other}"
-            )))
-        }
+        0 => Ok(()),
+        other => Err(bad(&alloc::format!("unsupported {what} ext {other}"))),
     }
-
-    d.finish()?;
-
-    Ok(success)
 }
 
 extern crate alloc;

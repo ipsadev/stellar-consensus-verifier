@@ -2,6 +2,17 @@
 
 All notable changes to this crate are recorded here. It follows semantic versioning: a major bump signals breaking API changes.
 
+## Unreleased
+
+### Changed
+
+- `verify_state_root` accepts a fee-bumped router transaction: a result pair with code `txFEE_BUMP_INNER_SUCCESS` is read through to its inner result, which must be `txSUCCESS` with one successful `INVOKE_HOST_FUNCTION` operation, and the inner success hash binds the preimage. Before, a fee-bumped router transaction could not prove its root.
+- When one invocation emits several root events from the router, the last one is returned instead of `AmbiguousRouterEvent`. The success preimage holds only events from calls that succeeded, in emission order, and each root covers every commitment before it, so the last root is the router's state when the invocation ended. `AmbiguousRouterEvent` is no longer returned; the variant stays so matching code keeps compiling.
+
+### Documentation
+
+- `SECURITY.md` step 5 describes the fee-bump path and the last-root rule, and no longer suggests a fee-bump's inner result is a separate pair in the result set.
+
 ## 2.2.1
 
 ### Added

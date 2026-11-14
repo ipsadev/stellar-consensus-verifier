@@ -51,8 +51,8 @@ The steps must run in this order. Each one is sound only if the steps before it 
    - Does not establish: anything about the anchor itself. The anchor must already be an `AuthenticatedHeader`, which only steps 4a or 4b produce.
 
 5. `verify::verify_router_root(authenticated_header, …) -> VerifiedRouterRoot`, optional.
-   - Establishes: the supplied result pairs hash to the header's `tx_set_result_hash`, the named transaction succeeded, and the router contract you named emitted exactly one contract event whose single topic is the agreed symbol, whose 32-byte payload is returned.
-   - The caller chooses which result pair is the router's transaction (`result_index`), for example the inner pair of a fee-bump; this is safe because every pair is first checked to hash, as an ordered set, to `tx_set_result_hash`, so no index can select a pair the ledger did not commit.
+   - Establishes: the supplied result pairs hash to the header's `tx_set_result_hash`, the named transaction succeeded, directly or as the inner transaction of a fee-bump, and the router contract you named emitted at least one contract event whose single topic is the agreed symbol. The 32-byte payload of the last such event is returned: the success preimage holds only events from calls that succeeded, in the order they were emitted, so the last root is the router's state when the invocation ended.
+   - The caller chooses which result pair is the router's transaction (`result_index`). A fee-bump is one pair whose result nests the inner transaction's result, and the crate reads through it. This is safe because every pair is first checked to hash, as an ordered set, to `tx_set_result_hash`, so no index can select a pair the ledger did not commit.
    - Takes only an `AuthenticatedHeader`, so the `tx_set_result_hash` it reads has been pinned by step 4a or 4b; it cannot be called on a merely value-bound header.
 
 ## What a full run proves, and what it does not
