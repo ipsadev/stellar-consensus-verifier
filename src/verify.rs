@@ -73,8 +73,10 @@ impl ConfirmedValue {
 /// Taking a quorum set straight from the evidence is the classic mistake: the
 /// evidence is pledged by the same validators whose signatures are being checked.
 /// `from_pinned` forces you to commit out of band to the fingerprint of the set
-/// you trust and refuses anything else, and it checks the set is BFT-sound, so a
-/// quorum set read from the evidence cannot reach the verifier by accident.
+/// you trust and refuses anything else, so a quorum set read from the evidence
+/// cannot reach the verifier by accident. It also checks every level of the set
+/// has a strict-majority threshold, which makes any two slices intersect but
+/// does not make them intersect in an honest validator; see `SECURITY.md`.
 #[derive(Clone, Debug)]
 pub struct TrustRoot {
     quorum_set: QuorumSet,
