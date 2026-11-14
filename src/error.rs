@@ -41,6 +41,8 @@ pub enum ScpError {
     NetworkMismatch,
     #[error("the quorum set does not match the pinned trust-root fingerprint")]
     TrustRootFingerprintMismatch,
+    #[error("input too large: {what} exceeds the limit of {limit}")]
+    InputTooLarge { what: &'static str, limit: usize },
     #[error("the EXTERNALIZE commit ballot has an empty value")]
     EmptyCommitValue,
     #[error("the highest confirmed ballot counter {highest} is below the commit counter {commit}")]

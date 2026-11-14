@@ -17,6 +17,8 @@ These are the values you must obtain out of band and are trusting by assumption.
 
 Everything else is attacker-controlled and is checked before it is believed: all SCP envelopes, all quorum-set preimages, all ledger-header bytes, all transaction sets, all transaction-result pairs, and anything read from a history archive. No count or hash read from these is trusted until a step below authenticates it.
 
+Each of these is also bounded, so a verifier running under a gas or cycle budget cannot be forced into unbounded work: the number of envelopes (`MAX_ENVELOPES`), quorum-set preimages (`MAX_QUORUM_SETS`), transaction-result pairs (`MAX_RESULT_PAIRS`), transaction-set bytes (`MAX_TRANSACTION_SET_BYTES`), and walk-back steps (`MAX_WALK_BACK_STEPS`) are capped, and over-limit input is refused with `InputTooLarge`. Quorum-set depth and size are already bounded by `QuorumSet::check_sane`, and the XDR decoder caps nesting.
+
 ## Required call order
 
 The `verify` module is the front door and the recommended way to use this crate. It carries trust in the types: each step takes the value the previous step produced and returns a new one whose fields are private, so holding a value is proof the earlier checks ran. The pipeline is `authenticate` → `AuthenticatedBatch`, `confirmed_value` → `ConfirmedValue`, `bind_header` → `ValueBoundHeader`, then either `bind_successor` or `walk_back` → `AuthenticatedHeader`, then `verify_router_root` → `VerifiedRouterRoot`. `verify_consensus` and `verify_header` are convenience wrappers for the first steps, and `verify_update` runs the whole update in one call. The trust root is checked for BFT-soundness once, when you build it with `TrustRoot::from_pinned`.

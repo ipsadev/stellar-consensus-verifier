@@ -1,6 +1,9 @@
 use crate::xdr::Result;
 use crate::{error::ScpError, primitives::stellar::header::LedgerHeader};
 
+/// Most ledgers one `walk_back` call may step through, to bound a verifier's work.
+pub const MAX_WALK_BACK_STEPS: usize = 1000;
+
 #[derive(Clone, Debug)]
 /// A ledger reached by walking back from one you already trust.
 ///
@@ -64,6 +67,13 @@ pub fn walk_back_header(
     }
 
     let expected = (anchor_seq - target_seq) as usize;
+
+    if expected > MAX_WALK_BACK_STEPS {
+        return Err(ScpError::InputTooLarge {
+            what: "walk-back steps",
+            limit: MAX_WALK_BACK_STEPS,
+        });
+    }
 
     if headers_descending.len() != expected {
         return Err(ScpError::ChainLengthMismatch {

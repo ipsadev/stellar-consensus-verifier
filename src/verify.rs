@@ -236,6 +236,13 @@ pub fn bind_successor(
     successor: &ConfirmedValue,
     successor_tx_set_xdr: &[u8],
 ) -> Result<AuthenticatedHeader> {
+    if successor_tx_set_xdr.len() > txset::MAX_TRANSACTION_SET_BYTES {
+        return Err(ScpError::InputTooLarge {
+            what: "transaction set",
+            limit: txset::MAX_TRANSACTION_SET_BYTES,
+        });
+    }
+
     if header.network_id != successor.network_id {
         return Err(ScpError::NetworkMismatch);
     }

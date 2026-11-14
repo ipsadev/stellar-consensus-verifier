@@ -2,9 +2,10 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::{
     error::ScpError,
+    primitives::stellar::{chain::MAX_WALK_BACK_STEPS, txset::MAX_TRANSACTION_SET_BYTES},
     verify::{
         bind_successor, verify_consensus, verify_header, verify_router_root, verify_update,
-        ConfirmedValue, TrustRoot, UpdateEvidence,
+        walk_back, ConfirmedValue, TrustRoot, UpdateEvidence,
     },
 };
 
@@ -288,4 +289,81 @@ fn bind_successor_rejects_a_successor_from_another_network() {
         .expect_err("a successor from a different network is refused");
 
     assert_eq!(err, ScpError::NetworkMismatch);
+}
+
+#[test]
+fn bind_successor_rejects_an_oversized_transaction_set() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = trust_root(&fx);
+    let r = &fx.router;
+
+    let router_bound = verify_header(
+        &nid,
+        &local,
+        r.slot,
+        &hexvec(&r.envelopes),
+        &hexvec(&r.quorum_sets),
+        &unhex(&r.header),
+    )
+    .expect("the router ledger binds");
+
+    let oversized = vec![0u8; MAX_TRANSACTION_SET_BYTES + 1];
+
+    let err = bind_successor(
+        &router_bound,
+        &successor_value(&fx, &nid, &local),
+        &oversized,
+    )
+    .expect_err("an oversized transaction set is refused");
+
+    assert!(matches!(
+        err,
+        ScpError::InputTooLarge {
+            what: "transaction set",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn walk_back_rejects_too_long_a_span() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = trust_root(&fx);
+    let r = &fx.router;
+
+    let header = unhex(&r.header);
+    let envelopes = hexvec(&r.envelopes);
+    let quorum_sets = hexvec(&r.quorum_sets);
+    let successor_envelopes = hexvec(&fx.successor.envelopes);
+    let successor_quorum_sets = hexvec(&fx.successor.quorum_sets);
+    let successor_tx_set = unhex(&fx.successor.tx_set);
+
+    let anchor = verify_update(
+        &local,
+        &UpdateEvidence {
+            network_id: &nid,
+            slot: r.slot,
+            header_xdr: &header,
+            envelopes_xdr: &envelopes,
+            quorum_sets_xdr: &quorum_sets,
+            successor_envelopes_xdr: &successor_envelopes,
+            successor_quorum_sets_xdr: &successor_quorum_sets,
+            successor_tx_set_xdr: &successor_tx_set,
+        },
+    )
+    .expect("anchor authenticates");
+
+    let target = anchor.header().ledger_seq - (MAX_WALK_BACK_STEPS as u32 + 1);
+
+    let err = walk_back(&anchor, &[], target).expect_err("too long a walk-back span is refused");
+
+    assert!(matches!(
+        err,
+        ScpError::InputTooLarge {
+            what: "walk-back steps",
+            ..
+        }
+    ));
 }

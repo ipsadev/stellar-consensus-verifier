@@ -24,6 +24,11 @@ pub const SCP_ST_EXTERNALIZE: i32 = 2;
 /// Part of choosing what to vote on, which this crate does not need.
 pub const SCP_ST_NOMINATE: i32 = 3;
 
+/// Most envelopes one slot's evidence may carry, to bound a verifier's work.
+pub const MAX_ENVELOPES: usize = 1000;
+/// Most distinct quorum-set preimages one slot's evidence may carry.
+pub const MAX_QUORUM_SETS: usize = 1000;
+
 #[derive(Clone, Debug)]
 /// A signed statement from one validator.
 ///
@@ -170,6 +175,20 @@ pub fn authenticate(
     envelopes_xdr: &[Vec<u8>],
     quorum_sets_xdr: &[Vec<u8>],
 ) -> Result<Vec<Authenticated>> {
+    if envelopes_xdr.len() > MAX_ENVELOPES {
+        return Err(ScpError::InputTooLarge {
+            what: "envelopes",
+            limit: MAX_ENVELOPES,
+        });
+    }
+
+    if quorum_sets_xdr.len() > MAX_QUORUM_SETS {
+        return Err(ScpError::InputTooLarge {
+            what: "quorum sets",
+            limit: MAX_QUORUM_SETS,
+        });
+    }
+
     let mut envelopes = Vec::with_capacity(envelopes_xdr.len());
 
     for raw in envelopes_xdr {

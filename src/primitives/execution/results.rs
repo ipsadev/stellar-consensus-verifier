@@ -11,6 +11,9 @@ const OP_INNER: i32 = 0;
 const OP_TYPE_INVOKE_HOST_FUNCTION: i32 = 24;
 const INVOKE_HOST_FUNCTION_SUCCESS: i32 = 0;
 
+/// Most transaction-result pairs one ledger may carry, to bound a verifier's work.
+pub const MAX_RESULT_PAIRS: usize = 100_000;
+
 fn bad(what: &str) -> ScpError {
     ScpError::InvalidWire(what.into())
 }
@@ -33,6 +36,13 @@ pub fn verify_result_set_hash(
     result_pairs: &[Vec<u8>],
     tx_set_result_hash: &[u8; 32],
 ) -> Result<()> {
+    if result_pairs.len() > MAX_RESULT_PAIRS {
+        return Err(ScpError::InputTooLarge {
+            what: "result pairs",
+            limit: MAX_RESULT_PAIRS,
+        });
+    }
+
     let mut hasher = Sha256::new();
 
     hasher.update((result_pairs.len() as u32).to_be_bytes());

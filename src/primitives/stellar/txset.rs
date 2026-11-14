@@ -6,6 +6,9 @@ use crate::xdr::{Decoder, Result};
 /// The only transaction-set format this crate reads.
 pub const GENERALIZED_TX_SET_V1: i32 = 1;
 
+/// Most bytes a transaction set may be, to bound a verifier's hashing work.
+pub const MAX_TRANSACTION_SET_BYTES: usize = 8 * 1024 * 1024;
+
 /// Reads which ledger a transaction set was built on.
 ///
 /// Used to prove a set belongs to the ledger that follows the one being
