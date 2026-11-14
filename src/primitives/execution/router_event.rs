@@ -25,14 +25,20 @@ const SCV_ADDRESS: i32 = 18;
 const SCV_CONTRACT_INSTANCE: i32 = 19;
 const SCV_LEDGER_KEY_CONTRACT_INSTANCE: i32 = 20;
 const SCV_LEDGER_KEY_NONCE: i32 = 21;
+const SCV_EXECUTABLE_TAG: i32 = 22;
 
 const CONTRACT_EVENT_CONTRACT: i32 = 1;
 
 const SC_ADDRESS_TYPE_ACCOUNT: i32 = 0;
 const SC_ADDRESS_TYPE_CONTRACT: i32 = 1;
+const SC_ADDRESS_TYPE_MUXED_ACCOUNT: i32 = 2;
+const SC_ADDRESS_TYPE_CLAIMABLE_BALANCE: i32 = 3;
+const SC_ADDRESS_TYPE_LIQUIDITY_POOL: i32 = 4;
+const SC_ADDRESS_TYPE_MUXED_CONTRACT: i32 = 5;
 
 const CONTRACT_EXECUTABLE_WASM: i32 = 0;
 const CONTRACT_EXECUTABLE_STELLAR_ASSET: i32 = 1;
+const CONTRACT_EXECUTABLE_EXTERNAL_REF: i32 = 2;
 
 const MAX_TOPICS: usize = 4;
 const MAX_EVENTS: usize = 4096;
@@ -191,7 +197,7 @@ fn skip_scval(d: &mut Decoder<'_>, depth: u32) -> Result<()> {
                 d.u64()?;
             }
         }
-        SCV_BYTES | SCV_STRING | SCV_SYMBOL => {
+        SCV_BYTES | SCV_STRING | SCV_SYMBOL | SCV_EXECUTABLE_TAG => {
             d.var_bytes()?;
         }
         SCV_VEC => {
@@ -220,6 +226,10 @@ fn skip_scval(d: &mut Decoder<'_>, depth: u32) -> Result<()> {
                     d.fixed32()?;
                 }
                 CONTRACT_EXECUTABLE_STELLAR_ASSET => {}
+                CONTRACT_EXECUTABLE_EXTERNAL_REF => {
+                    skip_address(d)?;
+                    d.var_bytes()?;
+                }
                 other => {
                     return Err(bad(&alloc::format!(
                         "unsupported ContractExecutable {other}"
@@ -248,6 +258,21 @@ fn skip_address(d: &mut Decoder<'_>) -> Result<()> {
             d.node_id()?;
         }
         SC_ADDRESS_TYPE_CONTRACT => {
+            d.fixed32()?;
+        }
+        SC_ADDRESS_TYPE_MUXED_ACCOUNT => {
+            d.u64()?;
+            d.fixed32()?;
+        }
+        SC_ADDRESS_TYPE_CLAIMABLE_BALANCE => {
+            d.i32()?;
+            d.fixed32()?;
+        }
+        SC_ADDRESS_TYPE_LIQUIDITY_POOL => {
+            d.fixed32()?;
+        }
+        SC_ADDRESS_TYPE_MUXED_CONTRACT => {
+            d.u64()?;
             d.fixed32()?;
         }
         other => return Err(bad(&alloc::format!("unsupported SCAddressType {other}"))),

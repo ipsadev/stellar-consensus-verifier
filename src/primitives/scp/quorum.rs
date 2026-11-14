@@ -219,8 +219,12 @@ pub fn is_quorum(local: &QuorumSet, signers: &[(NodeId, QuorumSet)]) -> bool {
 
 /// A quorum set containing only this validator.
 ///
-/// Stands in for a validator that has already declared a value final, whose
-/// own configuration no longer affects the outcome.
+/// stellar-core's `Slot::getQuorumSetFromStatement` returns this for an
+/// EXTERNALIZE statement instead of the node's real quorum set: once a node has
+/// externalized, it has committed to a final value and its own configuration no
+/// longer affects the outcome, so the slot treats it as trusting only itself.
+/// This is why an EXTERNALIZE is counted without its quorum-set preimage; see
+/// the test `an_externalize_is_counted_without_its_quorum_set_preimage`.
 pub fn singleton_quorum_set(node: NodeId) -> QuorumSet {
     QuorumSet {
         threshold: 1,
