@@ -32,6 +32,11 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
 
+      - name: setup rust nightly for the fmt-check imports options
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
 

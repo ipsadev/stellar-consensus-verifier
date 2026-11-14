@@ -513,6 +513,18 @@ fn every_scval_kind_is_skipped_on_the_way_to_the_root() {
 }
 
 #[test]
+fn a_claimable_balance_address_with_an_unknown_id_type_is_refused() {
+    let claimable_balance = tagged(3, &[&i32_bytes(1), &[0x04; 32]]);
+    let address = tagged(18, &[&claimable_balance]);
+    let preimage = preimage(address, &[root_event()]);
+
+    assert_invalid_wire(
+        prove_one(&preimage),
+        "a claimable-balance address whose id type is not V0",
+    );
+}
+
+#[test]
 fn an_unknown_scval_kind_is_refused() {
     assert_invalid_wire(
         prove_one(&preimage(i32_bytes(23), &[root_event()])),

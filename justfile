@@ -12,7 +12,7 @@ fmt:
     cargo +nightly fmt --all
 
 fmt-check:
-    cargo fmt --all -- --check
+    cargo +nightly fmt --all -- --check
 
 lint:
     cargo clippy --locked --all-targets -- {{lints}}

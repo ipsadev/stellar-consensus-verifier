@@ -2,13 +2,13 @@ use alloc::{format, string::String, vec::Vec};
 
 use ed25519_dalek::{Signature, VerifyingKey};
 
-use crate::xdr::{Decoder, Result};
 use crate::{
     error::{bad, ScpError},
     primitives::scp::{
         quorum::{singleton_quorum_set, NodeId, QuorumSet},
         statement::{read_confirm, read_externalize, read_prepare, Externalize, Statement},
     },
+    xdr::{Decoder, Result},
 };
 
 /// Marks a signature as covering a consensus message, so it cannot be reused

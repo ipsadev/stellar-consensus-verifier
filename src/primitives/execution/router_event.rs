@@ -1,7 +1,9 @@
 use alloc::vec::Vec;
 
-use crate::error::ScpError;
-use crate::xdr::{Decoder, Result};
+use crate::{
+    error::ScpError,
+    xdr::{Decoder, Result},
+};
 
 const SCV_BOOL: i32 = 0;
 const SCV_VOID: i32 = 1;
@@ -35,6 +37,8 @@ const SC_ADDRESS_TYPE_MUXED_ACCOUNT: i32 = 2;
 const SC_ADDRESS_TYPE_CLAIMABLE_BALANCE: i32 = 3;
 const SC_ADDRESS_TYPE_LIQUIDITY_POOL: i32 = 4;
 const SC_ADDRESS_TYPE_MUXED_CONTRACT: i32 = 5;
+
+const CLAIMABLE_BALANCE_ID_TYPE_V0: i32 = 0;
 
 const CONTRACT_EXECUTABLE_WASM: i32 = 0;
 const CONTRACT_EXECUTABLE_STELLAR_ASSET: i32 = 1;
@@ -265,7 +269,15 @@ fn skip_address(d: &mut Decoder<'_>) -> Result<()> {
             d.fixed32()?;
         }
         SC_ADDRESS_TYPE_CLAIMABLE_BALANCE => {
-            d.i32()?;
+            match d.i32()? {
+                CLAIMABLE_BALANCE_ID_TYPE_V0 => {}
+                other => {
+                    return Err(bad(&alloc::format!(
+                        "unsupported ClaimableBalanceIDType {other}"
+                    )))
+                }
+            }
+
             d.fixed32()?;
         }
         SC_ADDRESS_TYPE_LIQUIDITY_POOL => {

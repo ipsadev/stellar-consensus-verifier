@@ -1,7 +1,9 @@
 use sha2::{Digest, Sha256};
 
-use crate::error::ScpError;
-use crate::xdr::{Decoder, Result};
+use crate::{
+    error::ScpError,
+    xdr::{Decoder, Result},
+};
 
 /// The only transaction-set format this crate reads.
 pub const GENERALIZED_TX_SET_V1: i32 = 1;

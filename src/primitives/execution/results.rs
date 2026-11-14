@@ -2,9 +2,11 @@ use alloc::vec::Vec;
 
 use sha2::{Digest, Sha256};
 
-use crate::error::ScpError;
-use crate::primitives::execution::router_event::root_from_preimage;
-use crate::xdr::{Decoder, Result};
+use crate::{
+    error::ScpError,
+    primitives::execution::router_event::root_from_preimage,
+    xdr::{Decoder, Result},
+};
 
 const TX_SUCCESS: i32 = 0;
 const OP_INNER: i32 = 0;

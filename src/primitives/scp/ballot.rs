@@ -1,7 +1,9 @@
 use alloc::vec::Vec;
 
-use crate::error::bad;
-use crate::xdr::{Decoder, Result};
+use crate::{
+    error::bad,
+    xdr::{Decoder, Result},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// A proposed value and which round proposed it.
