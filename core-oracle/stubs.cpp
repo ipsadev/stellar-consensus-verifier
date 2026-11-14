@@ -27,10 +27,24 @@ init_logging(::stellar::LogLevel)
 {
 }
 
+static void
+ensure_sodium()
+{
+    static int const initialised = sodium_init();
+
+    if (initialised < 0)
+    {
+        std::fprintf(stderr, "core-oracle: sodium_init failed, so the sha256 "
+                             "bridge stub cannot hash\n");
+        std::abort();
+    }
+}
+
 void
 compute_sha256(const ::std::uint8_t *data, ::std::size_t len,
                ::std::uint8_t *out) noexcept
 {
+    ensure_sodium();
     crypto_hash_sha256(out, data, len);
 }
 
@@ -43,6 +57,8 @@ sha256_state(RustSha256 *self)
 ::rust::Box<RustSha256>
 new_rust_sha256() noexcept
 {
+    ensure_sodium();
+
     auto *state = new crypto_hash_sha256_state;
     crypto_hash_sha256_init(state);
 
