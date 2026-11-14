@@ -1,4 +1,4 @@
-use stellar_consensus_verifier::ledger::*;
+use stellar_consensus_verifier::primitives::stellar::header::*;
 
 fn header_with_ext(ext: i32, arm: &[u8]) -> Vec<u8> {
     build_header(27, 4_264_884, [0x22u8; 32], ext, arm)

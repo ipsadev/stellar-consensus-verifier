@@ -1,5 +1,9 @@
 use sha2::{Digest, Sha256};
-use stellar_consensus_verifier::{quorum::*, xdr::MAX_QSET_DEPTH};
+use stellar_consensus_verifier::{
+    primitives::analysis::{quorum_intersection_refuted, quorum_split_threatens},
+    primitives::scp::quorum::*,
+    xdr::MAX_QSET_DEPTH,
+};
 
 fn encode(threshold: u32, validators: &[NodeId], inner: &[Vec<u8>]) -> Vec<u8> {
     let mut out = threshold.to_be_bytes().to_vec();

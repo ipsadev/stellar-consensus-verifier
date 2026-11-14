@@ -1,4 +1,4 @@
-use stellar_consensus_verifier::{envelope::*, error::ScpError};
+use stellar_consensus_verifier::{error::ScpError, primitives::scp::envelope::*};
 
 fn statement(kind: i32, value: &[u8]) -> Vec<u8> {
     ballot_statement(kind, value, 1, 1)

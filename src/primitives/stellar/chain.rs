@@ -1,5 +1,5 @@
-use super::xdr::Result;
-use crate::{error::ScpError, ledger::LedgerHeader};
+use crate::xdr::Result;
+use crate::{error::ScpError, primitives::stellar::header::LedgerHeader};
 
 #[derive(Clone, Debug)]
 /// A ledger reached by walking back from one you already trust.

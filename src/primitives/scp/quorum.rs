@@ -2,8 +2,8 @@ use alloc::vec::Vec;
 
 use sha2::{Digest, Sha256};
 
-use super::xdr::{Decoder, Result, MAX_QSET_DEPTH, MAX_QSET_VALIDATORS};
 use crate::error::ScpError;
+use crate::xdr::{Decoder, Result, MAX_QSET_DEPTH, MAX_QSET_VALIDATORS};
 
 /// A validator, identified by its public key.
 pub type NodeId = [u8; 32];
@@ -190,66 +190,6 @@ pub fn is_quorum_closed(members: &[(NodeId, QuorumSet)]) -> bool {
     members.iter().all(|(_, qset)| is_quorum_slice(qset, &ids))
 }
 
-/// Checks a claim that the network could split in two.
-///
-/// Stellar is only safe while every two self-sufficient groups share at least
-/// one validator. Proving that holds is expensive; disproving it is cheap,
-/// because the proof is just two such groups with nobody in common. This
-/// verifies such a proof.
-pub fn quorum_intersection_refuted(
-    fbas: &[(NodeId, QuorumSet)],
-    first: &[NodeId],
-    second: &[NodeId],
-) -> bool {
-    if first.iter().any(|id| second.contains(id)) {
-        return false;
-    }
-
-    let Some(one) = members_of(fbas, first) else {
-        return false;
-    };
-    let Some(other) = members_of(fbas, second) else {
-        return false;
-    };
-
-    is_quorum_closed(&one) && is_quorum_closed(&other)
-}
-
-/// Whether a split would actually endanger *you*.
-///
-/// A split elsewhere in the network is not your problem unless both sides can
-/// satisfy your own trust root. Note that a trust root accepted by
-/// [`QuorumSet::check_sane`] with `extra` set can never be split this way.
-pub fn quorum_split_threatens(
-    local: &QuorumSet,
-    fbas: &[(NodeId, QuorumSet)],
-    first: &[NodeId],
-    second: &[NodeId],
-) -> bool {
-    quorum_intersection_refuted(fbas, first, second)
-        && is_quorum_slice(local, first)
-        && is_quorum_slice(local, second)
-}
-
-fn members_of(fbas: &[(NodeId, QuorumSet)], nodes: &[NodeId]) -> Option<Vec<(NodeId, QuorumSet)>> {
-    let mut out = Vec::with_capacity(nodes.len());
-
-    for node in nodes {
-        if out
-            .iter()
-            .any(|(held, _): &(NodeId, QuorumSet)| held == node)
-        {
-            return None;
-        }
-
-        let qset = fbas.iter().find(|(id, _)| id == node)?;
-
-        out.push(qset.clone());
-    }
-
-    Some(out)
-}
-
 /// Whether these signers amount to a quorum for your trust root.
 ///
 /// Signers whose own quorum set is not satisfied by the others present are
@@ -275,6 +215,18 @@ pub fn is_quorum(local: &QuorumSet, signers: &[(NodeId, QuorumSet)]) -> bool {
     }
 
     is_quorum_slice(local, &surviving)
+}
+
+/// A quorum set containing only this validator.
+///
+/// Stands in for a validator that has already declared a value final, whose
+/// own configuration no longer affects the outcome.
+pub fn singleton_quorum_set(node: NodeId) -> QuorumSet {
+    QuorumSet {
+        threshold: 1,
+        validators: alloc::vec![node],
+        inner_sets: Vec::new(),
+    }
 }
 
 extern crate alloc;
