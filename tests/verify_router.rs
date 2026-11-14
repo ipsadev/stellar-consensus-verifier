@@ -38,6 +38,16 @@ struct Fixture {
     successor: Successor,
 }
 
+#[derive(Deserialize)]
+struct MainnetValue {
+    network_id: String,
+    local_quorum_set: String,
+    slot: u64,
+    header: String,
+    envelopes: Vec<String>,
+    quorum_sets: Vec<String>,
+}
+
 fn unhex(s: &str) -> Vec<u8> {
     (0..s.len())
         .step_by(2)
@@ -250,4 +260,32 @@ fn bind_successor_rejects_a_tampered_successor_tx_set() {
         .expect_err("a transaction set that no longer hashes to the signed value is refused");
 
     assert_eq!(err, ScpError::SuccessorTxSetMismatch);
+}
+
+#[test]
+fn bind_successor_rejects_a_successor_from_another_network() {
+    let mn: MainnetValue =
+        serde_json::from_str(include_str!("fixtures/mainnet-value.json")).expect("mainnet fixture");
+    let mn_nid = h32(&mn.network_id);
+    let mn_xdr = unhex(&mn.local_quorum_set);
+    let mn_fingerprint: [u8; 32] = Sha256::digest(&mn_xdr).into();
+    let mn_root = TrustRoot::from_pinned(&mn_xdr, &mn_fingerprint).expect("mainnet trust root");
+
+    let mainnet_bound = verify_header(
+        &mn_nid,
+        &mn_root,
+        mn.slot,
+        &hexvec(&mn.envelopes),
+        &hexvec(&mn.quorum_sets),
+        &unhex(&mn.header),
+    )
+    .expect("the mainnet ledger value-binds");
+
+    let fx = fixture();
+    let successor = successor_value(&fx, &h32(&fx.network_id), &trust_root(&fx));
+
+    let err = bind_successor(&mainnet_bound, &successor, &unhex(&fx.successor.tx_set))
+        .expect_err("a successor from a different network is refused");
+
+    assert_eq!(err, ScpError::NetworkMismatch);
 }
