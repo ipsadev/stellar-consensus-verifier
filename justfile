@@ -31,6 +31,19 @@ wasm:
 audit:
     cargo audit --file Cargo.lock
 
+# build stellar-core's quorum predicates into core-oracle/oracle, a linux binary
+oracle:
+    #!/bin/sh
+    set -eu
+    docker build -t scp-core-oracle core-oracle/
+    id=$(docker create scp-core-oracle)
+    trap 'docker rm "$id" >/dev/null' EXIT
+    docker cp "$id":/usr/local/bin/oracle core-oracle/oracle
+
+# check the quorum predicates against stellar-core; off linux, pass oracle=core-oracle/oracle-docker
+differential oracle="core-oracle/oracle" cases="2000":
+    CORE_ORACLE={{oracle}} CORE_DIFF_CASES={{cases}} cargo test --locked --release --test quorum_differential -- --include-ignored --nocapture
+
 # the rendered API docs, as docs.rs will build them
 doc:
     cargo doc --no-deps --open

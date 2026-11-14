@@ -150,11 +150,17 @@ impl Drop for Oracle {
     }
 }
 
-fn oracle() -> Option<Oracle> {
-    let path = std::env::var("CORE_ORACLE").ok()?;
+fn oracle() -> Oracle {
+    let Ok(path) = std::env::var("CORE_ORACLE") else {
+        panic!(
+            "CORE_ORACLE is not set. Build core-oracle/ against a stellar-core tree, then run \
+             CORE_ORACLE=core-oracle/oracle cargo test --release --test quorum_differential -- \
+             --include-ignored"
+        );
+    };
 
     match Oracle::start(&path) {
-        Some(o) => Some(o),
+        Some(o) => o,
         None => panic!("CORE_ORACLE is set to {path:?} but it would not start"),
     }
 }
@@ -182,18 +188,10 @@ fn require_mix(name: &str, trues: usize, total: usize) {
     );
 }
 
-fn skipped() {
-    eprintln!(
-        "skipping: CORE_ORACLE is not set. Build core-oracle/ against a stellar-core tree, then \
-         run CORE_ORACLE=core-oracle/oracle cargo test --release --test quorum_differential"
-    );
-}
-
 #[test]
+#[ignore = "needs CORE_ORACLE; runs in the differential workflow"]
 fn is_quorum_agrees_with_stellar_core() {
-    let Some(mut oracle) = oracle() else {
-        return skipped();
-    };
+    let mut oracle = oracle();
 
     let total = cases();
     let mut trues = 0usize;
@@ -236,10 +234,9 @@ fn is_quorum_agrees_with_stellar_core() {
 }
 
 #[test]
+#[ignore = "needs CORE_ORACLE; runs in the differential workflow"]
 fn is_quorum_slice_agrees_with_stellar_core() {
-    let Some(mut oracle) = oracle() else {
-        return skipped();
-    };
+    let mut oracle = oracle();
 
     let total = cases();
     let mut trues = 0usize;
@@ -275,10 +272,9 @@ fn is_quorum_slice_agrees_with_stellar_core() {
 }
 
 #[test]
+#[ignore = "needs CORE_ORACLE; runs in the differential workflow"]
 fn quorum_set_sanity_agrees_with_stellar_core() {
-    let Some(mut oracle) = oracle() else {
-        return skipped();
-    };
+    let mut oracle = oracle();
 
     let total = cases();
     let mut trues = 0usize;

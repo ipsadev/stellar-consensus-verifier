@@ -1,7 +1,7 @@
 # core-oracle
 
 a differential oracle: stellar-core's own quorum predicates, wrapped in a line protocol so
-`tests/core_differential.rs` can check our port against them case for case.
+`tests/quorum/quorum_differential.rs` can check our port against them case for case.
 
 ## what it exposes
 
@@ -17,14 +17,18 @@ ever disagree on the same input, the test fails.
 ## build and run
 
 ```sh
-docker build -t scp-core-oracle core-oracle/
-CORE_ORACLE=core-oracle/oracle-docker cargo test --release --test core_differential
+just oracle                                         # docker build, then copies the binary to core-oracle/oracle
+just differential                                   # linux: runs core-oracle/oracle natively
+just differential core-oracle/oracle-docker 2000    # macos: runs the image through docker
 ```
 
-`oracle-docker` is a one-line wrapper around `docker run --rm -i scp-core-oracle`. point `CORE_ORACLE`
-at any executable that speaks the protocol if you'd rather build it another way.
+`just differential` runs `cargo test --release --test quorum_differential -- --include-ignored` with `CORE_ORACLE` and `CORE_DIFF_CASES` set. `oracle-docker` is a one-line wrapper around `docker run --rm -i scp-core-oracle`. point `CORE_ORACLE` at any executable that speaks the protocol if you'd rather build it another way.
 
-the differential test **skips with a message** when `CORE_ORACLE` is unset, so ci pays nothing for it.
+the three differential tests are `#[ignore]`d, so a plain `cargo test` reports them as ignored rather than passed. run with `--include-ignored` and they need `CORE_ORACLE`: if it is unset, they fail instead of passing quietly.
+
+## in ci
+
+`.github/workflows/differential.yml` runs the differential on pull requests that touch `src/primitives/scp/`, `tests/quorum/` or `core-oracle/`, every monday, and on demand. the oracle binary is cached under a key hashed from `core-oracle/**`, so stellar-core is only rebuilt when the tag, the oracle source or the build script changes. pull requests run 20,000 cases per predicate, the weekly run 200,000, and a manual run takes the count as an input.
 
 ## what's in the build
 
@@ -50,8 +54,8 @@ is telling you when two implementations disagree.
 ## what agreement proves, and what it doesn't
 
 **proves:** our port of the quorum predicates and stellar-core's originals reach the same answer on the
-same input, over 2,000 generated cases of up to 8 nodes with nested quorum sets.
+same input, over the generated cases (2,000 by default, 20,000 on a pull request, 200,000 weekly) of up to 8 nodes with nested quorum sets.
 
 **does not prove:** anything about signature verification, which is stubbed out here. and it does not
-prove either implementation matches the whitepaper. `tests/whitepaper.rs` covers that separately, on
+prove either implementation matches the whitepaper. `tests/quorum/quorum_whitepaper.rs` covers that separately, on
 small federations built by hand.
