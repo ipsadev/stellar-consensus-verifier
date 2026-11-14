@@ -1,4 +1,4 @@
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use stellar_consensus_verifier::primitives::scp::envelope::verify_signature;
 
 const NETWORK: [u8; 32] = [0x11; 32];
@@ -46,7 +46,7 @@ fn an_all_zero_signature_is_rejected() {
 }
 
 #[test]
-fn a_public_key_that_is_not_a_point_is_rejected() {
+fn a_public_key_of_all_ones_is_rejected() {
     let (_node, sig) = sign(7, b"consensus message");
 
     assert!(!verify_signature(&[0xff; 32], b"consensus message", &sig));
@@ -69,4 +69,21 @@ fn the_signature_is_bound_to_its_payload() {
 
     assert!(verify_signature(&node, &one, &sig));
     assert!(!verify_signature(&node, &two, &sig));
+}
+
+#[test]
+fn a_public_key_that_does_not_decompress_is_rejected() {
+    let not_a_point = (2u8..=u8::MAX)
+        .map(|first| {
+            let mut bytes = [0u8; 32];
+
+            bytes[0] = first;
+
+            bytes
+        })
+        .find(|bytes| VerifyingKey::from_bytes(bytes).is_err())
+        .expect("some small y has no point on the curve");
+    let (_node, sig) = sign(7, b"consensus message");
+
+    assert!(!verify_signature(&not_a_point, b"consensus message", &sig));
 }

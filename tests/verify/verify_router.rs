@@ -4,8 +4,9 @@ use stellar_consensus_verifier::{
     error::ScpError,
     primitives::stellar::{chain::MAX_WALK_BACK_STEPS, txset::MAX_TRANSACTION_SET_BYTES},
     verify::{
-        bind_successor, verify_consensus, verify_header, verify_router_root, verify_update,
-        walk_back, ConfirmedValue, TrustRoot, UpdateEvidence,
+        authenticate, bind_header, bind_successor, confirmed_value, verify_consensus,
+        verify_header, verify_router_root, verify_update, walk_back, AuthenticatedHeader,
+        ConfirmedValue, TrustRoot, UpdateEvidence,
     },
 };
 
@@ -37,6 +38,12 @@ struct Fixture {
     local_quorum_set: String,
     router: Router,
     successor: Successor,
+}
+
+#[derive(Deserialize)]
+struct Ancestors {
+    target_seq: u32,
+    headers_descending: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -84,6 +91,31 @@ fn successor_value(fx: &Fixture, nid: &[u8; 32], local: &TrustRoot) -> Confirmed
         &hexvec(&fx.successor.quorum_sets),
     )
     .expect("the successor's value is confirmed")
+}
+
+fn anchor(fx: &Fixture, nid: &[u8; 32], local: &TrustRoot) -> AuthenticatedHeader {
+    let r = &fx.router;
+    let header = unhex(&r.header);
+    let envelopes = hexvec(&r.envelopes);
+    let quorum_sets = hexvec(&r.quorum_sets);
+    let successor_envelopes = hexvec(&fx.successor.envelopes);
+    let successor_quorum_sets = hexvec(&fx.successor.quorum_sets);
+    let successor_tx_set = unhex(&fx.successor.tx_set);
+
+    verify_update(
+        local,
+        &UpdateEvidence {
+            network_id: nid,
+            slot: r.slot,
+            header_xdr: &header,
+            envelopes_xdr: &envelopes,
+            quorum_sets_xdr: &quorum_sets,
+            successor_envelopes_xdr: &successor_envelopes,
+            successor_quorum_sets_xdr: &successor_quorum_sets,
+            successor_tx_set_xdr: &successor_tx_set,
+        },
+    )
+    .expect("the router ledger authenticates")
 }
 
 #[test]
@@ -331,29 +363,7 @@ fn walk_back_rejects_too_long_a_span() {
     let fx = fixture();
     let nid = h32(&fx.network_id);
     let local = trust_root(&fx);
-    let r = &fx.router;
-
-    let header = unhex(&r.header);
-    let envelopes = hexvec(&r.envelopes);
-    let quorum_sets = hexvec(&r.quorum_sets);
-    let successor_envelopes = hexvec(&fx.successor.envelopes);
-    let successor_quorum_sets = hexvec(&fx.successor.quorum_sets);
-    let successor_tx_set = unhex(&fx.successor.tx_set);
-
-    let anchor = verify_update(
-        &local,
-        &UpdateEvidence {
-            network_id: &nid,
-            slot: r.slot,
-            header_xdr: &header,
-            envelopes_xdr: &envelopes,
-            quorum_sets_xdr: &quorum_sets,
-            successor_envelopes_xdr: &successor_envelopes,
-            successor_quorum_sets_xdr: &successor_quorum_sets,
-            successor_tx_set_xdr: &successor_tx_set,
-        },
-    )
-    .expect("anchor authenticates");
+    let anchor = anchor(&fx, &nid, &local);
 
     let target = anchor.header().ledger_seq - (MAX_WALK_BACK_STEPS as u32 + 1);
 
@@ -366,4 +376,117 @@ fn walk_back_rejects_too_long_a_span() {
             ..
         }
     ));
+}
+
+#[test]
+fn each_typed_step_carries_its_network_and_slot() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = trust_root(&fx);
+    let r = &fx.router;
+    let xdr = unhex(&fx.local_quorum_set);
+    let fingerprint: [u8; 32] = Sha256::digest(&xdr).into();
+
+    let batch = authenticate(&nid, r.slot, &hexvec(&r.envelopes), &hexvec(&r.quorum_sets))
+        .expect("the router ledger's envelopes authenticate");
+    let value = confirmed_value(&local, &batch).expect("one value confirms");
+    let bound = bind_header(&value, &unhex(&r.header)).expect("the header carries the value");
+    let anchored = anchor(&fx, &nid, &local);
+
+    assert_eq!(local.fingerprint(), &fingerprint);
+    assert_eq!(batch.network_id(), &nid);
+    assert_eq!(batch.slot(), r.slot);
+    assert_eq!(batch.statements().len(), r.envelopes.len());
+    assert_eq!(value.network_id(), &nid);
+    assert_eq!(value.slot(), r.slot);
+    assert_eq!(
+        value.value_bytes(),
+        bound.header().scp_value_bytes.as_slice()
+    );
+    assert_eq!(bound.network_id(), &nid);
+    assert_eq!(anchored.network_id(), &nid);
+    assert_eq!(anchored.header().ledger_hash, bound.header().ledger_hash);
+}
+
+#[test]
+fn bind_successor_rejects_a_successor_that_is_not_the_next_slot() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = trust_root(&fx);
+    let r = &fx.router;
+
+    let router_bound = verify_header(
+        &nid,
+        &local,
+        r.slot,
+        &hexvec(&r.envelopes),
+        &hexvec(&r.quorum_sets),
+        &unhex(&r.header),
+    )
+    .expect("the router ledger binds");
+
+    let same_slot = verify_consensus(
+        &nid,
+        &local,
+        r.slot,
+        &hexvec(&r.envelopes),
+        &hexvec(&r.quorum_sets),
+    )
+    .expect("the router ledger's own value confirms");
+
+    let err = bind_successor(&router_bound, &same_slot, &unhex(&fx.successor.tx_set))
+        .expect_err("ledger N's own value cannot stand in for N+1's");
+
+    assert_eq!(
+        err,
+        ScpError::SuccessorNotNext {
+            expected: r.slot + 1,
+            found: r.slot,
+        }
+    );
+}
+
+#[test]
+fn walk_back_authenticates_an_ancestor_of_the_anchor() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = trust_root(&fx);
+    let ancestors: Ancestors =
+        serde_json::from_str(include_str!("../fixtures/testnet-router-ancestors.json"))
+            .expect("ancestors fixture");
+    let headers = hexvec(&ancestors.headers_descending);
+    let refs: Vec<&[u8]> = headers.iter().map(Vec::as_slice).collect();
+    let anchored = anchor(&fx, &nid, &local);
+
+    let target = walk_back(&anchored, &refs, ancestors.target_seq)
+        .expect("the anchor's grandparent is reached by hash links");
+
+    assert_eq!(target.header().ledger_seq, ancestors.target_seq);
+    assert_eq!(target.header().ledger_seq, anchored.header().ledger_seq - 2);
+    assert_eq!(target.network_id(), &nid);
+    assert_eq!(
+        target.header().ledger_hash,
+        <[u8; 32]>::from(Sha256::digest(&headers[1]))
+    );
+}
+
+#[test]
+fn walk_back_rejects_an_ancestor_that_does_not_hash_link() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = trust_root(&fx);
+    let ancestors: Ancestors =
+        serde_json::from_str(include_str!("../fixtures/testnet-router-ancestors.json"))
+            .expect("ancestors fixture");
+    let mut headers = hexvec(&ancestors.headers_descending);
+
+    headers[1][200] ^= 0x01;
+
+    let refs: Vec<&[u8]> = headers.iter().map(Vec::as_slice).collect();
+    let anchored = anchor(&fx, &nid, &local);
+
+    let err = walk_back(&anchored, &refs, ancestors.target_seq)
+        .expect_err("an edited ancestor no longer hashes to its child's link");
+
+    assert!(matches!(err, ScpError::ChainBroken { .. }));
 }
