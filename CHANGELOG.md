@@ -2,7 +2,7 @@
 
 All notable changes to this crate are recorded here. It follows semantic versioning: a major bump signals breaking API changes.
 
-## Unreleased
+## 2.2.1
 
 ### Added
 
