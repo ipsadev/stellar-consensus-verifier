@@ -1,4 +1,4 @@
-use stellar_consensus_verifier::txset::*;
+use stellar_consensus_verifier::primitives::stellar::txset::*;
 
 #[test]
 fn a_v1_set_names_its_predecessor() {

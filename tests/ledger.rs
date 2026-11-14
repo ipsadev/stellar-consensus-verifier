@@ -1,4 +1,4 @@
-use stellar_consensus_verifier::ledger::*;
+use stellar_consensus_verifier::primitives::stellar::header::*;
 
 fn header_with_ext(ext: i32, arm: &[u8]) -> Vec<u8> {
     build_header(27, 4_264_884, [0x22u8; 32], ext, arm)
@@ -25,6 +25,7 @@ fn build_header(version: u32, seq: u32, tx_set_hash: [u8; 32], ext: i32, arm: &[
     build_full(version, seq, tx_set_hash, ext, arm, &[], 0, &[])
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_full(
     version: u32,
     seq: u32,

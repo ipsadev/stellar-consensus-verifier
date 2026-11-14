@@ -1,5 +1,8 @@
 use serde::Deserialize;
-use stellar_consensus_verifier::{chain::walk_back, error::ScpError, ledger::LedgerHeader};
+use stellar_consensus_verifier::{
+    error::ScpError,
+    primitives::stellar::{chain::walk_back, header::LedgerHeader},
+};
 
 #[derive(Deserialize)]
 struct Fixture {

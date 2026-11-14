@@ -1,10 +1,13 @@
 use sha2::{Digest, Sha256};
 
-use super::xdr::{Decoder, Result};
 use crate::error::ScpError;
+use crate::xdr::{Decoder, Result};
 
 /// The only transaction-set format this crate reads.
 pub const GENERALIZED_TX_SET_V1: i32 = 1;
+
+/// Most bytes a transaction set may be, to bound a verifier's hashing work.
+pub const MAX_TRANSACTION_SET_BYTES: usize = 8 * 1024 * 1024;
 
 /// Reads which ledger a transaction set was built on.
 ///

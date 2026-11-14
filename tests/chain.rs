@@ -1,5 +1,8 @@
 use sha2::{Digest, Sha256};
-use stellar_consensus_verifier::{chain::*, error::ScpError, ledger::SKIP_LIST_LEN};
+use stellar_consensus_verifier::{
+    error::ScpError,
+    primitives::stellar::{chain::*, header::SKIP_LIST_LEN},
+};
 
 fn header(seq: u32, previous_ledger_hash: [u8; 32]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -58,9 +61,10 @@ fn chain(target_seq: u32, len: u32) -> Chain {
     Chain {
         headers,
         anchor_seq,
-        anchor_previous: stellar_consensus_verifier::ledger::LedgerHeader::decode(&anchor)
-            .expect("anchor decodes")
-            .previous_ledger_hash,
+        anchor_previous:
+            stellar_consensus_verifier::primitives::stellar::header::LedgerHeader::decode(&anchor)
+                .expect("anchor decodes")
+                .previous_ledger_hash,
         target_seq,
     }
 }

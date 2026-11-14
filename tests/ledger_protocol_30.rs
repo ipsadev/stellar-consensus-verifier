@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use stellar_consensus_verifier::ledger::LedgerHeader;
+use stellar_consensus_verifier::primitives::stellar::header::LedgerHeader;
 
 #[derive(Deserialize)]
 struct Recorded {

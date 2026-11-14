@@ -23,10 +23,26 @@ pub enum ScpError {
     UnauthenticatedEnvelope { node: alloc::string::String },
     #[error("the envelope is for slot {found}, not the slot {expected} being proven")]
     EnvelopeSlotMismatch { expected: u64, found: u64 },
+    #[error("no ballot-protocol evidence was supplied — every envelope was a nomination")]
+    NoBallotEvidence,
     #[error("no value reaches confirm commit for the trust root")]
     NoConfirmedCommit,
     #[error("two different values each reach confirm commit — this is fork evidence")]
     ForkedConfirmCommit,
+    #[error("the header's scpValue does not match the value consensus agreed on")]
+    HeaderValueMismatch,
+    #[error("the header is for ledger {found}, not the slot {expected} that was authenticated")]
+    HeaderSlotMismatch { expected: u64, found: u64 },
+    #[error("the successor is ledger {found}, not the {expected} that would follow")]
+    SuccessorNotNext { expected: u64, found: u64 },
+    #[error("the successor transaction set does not hash to the value its validators signed")]
+    SuccessorTxSetMismatch,
+    #[error("the header and its successor are from different networks")]
+    NetworkMismatch,
+    #[error("the quorum set does not match the pinned trust-root fingerprint")]
+    TrustRootFingerprintMismatch,
+    #[error("input too large: {what} exceeds the limit of {limit}")]
+    InputTooLarge { what: &'static str, limit: usize },
     #[error("the EXTERNALIZE commit ballot has an empty value")]
     EmptyCommitValue,
     #[error("the highest confirmed ballot counter {highest} is below the commit counter {commit}")]
@@ -62,4 +78,8 @@ pub enum ScpError {
     AmbiguousRouterEvent,
     #[error("the ibc_root event payload is not a 32-byte state root")]
     StateRootMalformed,
+}
+
+pub fn bad(what: &str) -> ScpError {
+    ScpError::InvalidWire(what.into())
 }

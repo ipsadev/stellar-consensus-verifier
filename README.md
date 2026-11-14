@@ -8,22 +8,28 @@ reads bytes and returns answers. No network, no storage, no clock.
 
 ## What it does
 
+`verify` is the front door: a typed pipeline that carries trust in its types, so holding a value proves the earlier checks ran. It wraps the primitives under `primitives`, grouped by what each guarantees.
+
 | Module | What it answers |
 |---|---|
-| `envelope` | what did this validator say, and did it really sign it |
-| `ballot` | did enough validators commit to this value for it to be settled |
-| `quorum` | who does a validator listen to, and do these signers add up to enough |
-| `ledger` | what is in this closed ledger, and what is its true hash |
-| `chain` | is this older ledger really an ancestor of one already trusted |
-| `txset` | which transactions did this ledger apply |
-| `results` | did this transaction succeed, and what state did it publish |
+| `verify` | the whole proof, step by step, as types that cannot be skipped |
+| `primitives::scp::envelope` | what did this validator say, did it really sign it, and is it genuine evidence |
+| `primitives::scp::statement` | which SCP statement is this, and is it newer than another |
+| `primitives::scp::ballot` | a proposed value and the round that proposed it |
+| `primitives::scp::commit` | did enough validators commit to one value for it to be settled |
+| `primitives::scp::quorum` | who does a validator listen to, and do these signers add up to enough |
+| `primitives::stellar::header` | what is in this closed ledger, and what is its true hash |
+| `primitives::stellar::chain` | is this older ledger really an ancestor of one already trusted |
+| `primitives::stellar::txset` | the SHA-256 of a transaction set, and the previous-ledger hash it names |
+| `primitives::execution::results` | did this transaction succeed, and does its result set match the header |
+| `primitives::execution::router_event` | which state root did the router publish in the success preimage |
+| `primitives::analysis` | could the network split, and would that split threaten you (never affects acceptance) |
 | `xdr` | reading Stellar's binary format without trusting it |
 | `error` | every reason a proof can be rejected |
 
-Signatures are verified inside the crate. `ballot::authenticate` is the only way
-to turn raw messages into something the rest of the crate will accept.
+Signatures are verified inside the crate. `primitives::scp::envelope::authenticate` is the only way to turn raw messages into something the rest of the crate will accept, and `verify` is the recommended way to drive it. See [SECURITY.md](SECURITY.md) for the trusted inputs, the required call order, and what each step does and does not establish.
 
-`ledger` reads every kind of agreed value up to Protocol 30: plain, signed, empty-transaction-set (CAP-83), and the two that also record the close time in milliseconds (CAP-88). It refuses a millisecond close time before Protocol 30, or one whose seconds differ from the header's `closeTime`, and exposes it as `close_time_ms`.
+`primitives::stellar::header` reads every kind of agreed value up to Protocol 30: plain, signed, empty-transaction-set (CAP-83), and the two that also record the close time in milliseconds (CAP-88). It refuses a millisecond close time before Protocol 30, or one whose seconds differ from the header's `closeTime`, and exposes it as `close_time_ms`.
 
 It does not tell you whether the validators you trust are a sensible choice.
 That stays the caller's decision.

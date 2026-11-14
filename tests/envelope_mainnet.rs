@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use stellar_consensus_verifier::envelope::{Envelope, ENVELOPE_TYPE_SCP};
+use stellar_consensus_verifier::primitives::scp::envelope::{Envelope, ENVELOPE_TYPE_SCP};
 
 const LIVE_PASSPHRASE: &str = "Public Global Stellar Network ; September 2015";
 const TEST_PASSPHRASE: &str = "Test SDF Network ; September 2015";

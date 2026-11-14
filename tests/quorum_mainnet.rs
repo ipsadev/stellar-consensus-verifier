@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use stellar_consensus_verifier::quorum::QuorumSet;
+use stellar_consensus_verifier::primitives::scp::quorum::QuorumSet;
 
 #[derive(Deserialize)]
 struct Archived {

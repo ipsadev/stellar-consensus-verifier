@@ -1,5 +1,8 @@
-use super::xdr::Result;
-use crate::{error::ScpError, ledger::LedgerHeader};
+use crate::xdr::Result;
+use crate::{error::ScpError, primitives::stellar::header::LedgerHeader};
+
+/// Most ledgers one `walk_back` call may step through, to bound a verifier's work.
+pub const MAX_WALK_BACK_STEPS: usize = 1000;
 
 #[derive(Clone, Debug)]
 /// A ledger reached by walking back from one you already trust.
@@ -30,6 +33,32 @@ pub fn walk_back(
     headers_descending: &[&[u8]],
     target_seq: u32,
 ) -> Result<ChainedLedger> {
+    let target = walk_back_header(
+        anchor_seq,
+        anchor_previous_ledger_hash,
+        headers_descending,
+        target_seq,
+    )?;
+
+    Ok(ChainedLedger {
+        ledger_seq: target.ledger_seq,
+        ledger_hash: target.ledger_hash,
+        previous_ledger_hash: target.previous_ledger_hash,
+        close_time: target.close_time,
+        tx_set_result_hash: target.tx_set_result_hash,
+        bucket_list_hash: target.bucket_list_hash,
+        links: (anchor_seq - target_seq) as usize,
+    })
+}
+
+/// The same walk as [`walk_back`], but returning the target's decoded header so
+/// callers that need the whole header do not decode it a second time.
+pub fn walk_back_header(
+    anchor_seq: u32,
+    anchor_previous_ledger_hash: &[u8; 32],
+    headers_descending: &[&[u8]],
+    target_seq: u32,
+) -> Result<LedgerHeader> {
     if anchor_seq <= target_seq {
         return Err(ScpError::ChainNotDescending {
             anchor: anchor_seq,
@@ -38,6 +67,13 @@ pub fn walk_back(
     }
 
     let expected = (anchor_seq - target_seq) as usize;
+
+    if expected > MAX_WALK_BACK_STEPS {
+        return Err(ScpError::InputTooLarge {
+            what: "walk-back steps",
+            limit: MAX_WALK_BACK_STEPS,
+        });
+    }
 
     if headers_descending.len() != expected {
         return Err(ScpError::ChainLengthMismatch {
@@ -76,20 +112,10 @@ pub fn walk_back(
         last = Some(header);
     }
 
-    let target = last.ok_or(ScpError::ChainLengthMismatch {
+    last.ok_or(ScpError::ChainLengthMismatch {
         anchor: anchor_seq,
         target: target_seq,
         expected,
         found: 0,
-    })?;
-
-    Ok(ChainedLedger {
-        ledger_seq: target.ledger_seq,
-        ledger_hash: target.ledger_hash,
-        previous_ledger_hash: target.previous_ledger_hash,
-        close_time: target.close_time,
-        tx_set_result_hash: target.tx_set_result_hash,
-        bucket_list_hash: target.bucket_list_hash,
-        links: expected,
     })
 }

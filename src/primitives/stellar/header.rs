@@ -2,8 +2,8 @@ use alloc::vec::Vec;
 
 use sha2::{Digest, Sha256};
 
-use super::xdr::{Decoder, Result};
 use crate::error::ScpError;
+use crate::xdr::{Decoder, Result};
 
 /// A closed ledger with nothing extra attached.
 pub const STELLAR_VALUE_BASIC: i32 = 0;

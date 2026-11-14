@@ -1,0 +1,407 @@
+use alloc::vec::Vec;
+
+use crate::{
+    error::ScpError,
+    primitives::{
+        execution::results::{verify_state_root, Inputs},
+        scp::{
+            commit::confirmed_value as commit_confirmed_value,
+            envelope::{authenticate as envelope_authenticate, Authenticated},
+            quorum::QuorumSet,
+        },
+        stellar::{
+            chain::walk_back_header as chain_walk_back_header,
+            header::{tx_set_hash_of_value, LedgerHeader},
+            txset,
+        },
+    },
+    xdr::Result,
+};
+
+// The types in this module carry trust in their shape. Each has private fields
+// and can only be built by the function above it in the pipeline, so holding one
+// is proof the earlier steps ran. The module-level functions in `envelope`,
+// `commit`, `chain`, and `results` are the primitives these wrap; a
+// caller reaching for those takes on the responsibilities listed in SECURITY.md.
+
+/// Signed statements for one slot of one network, every signature already checked.
+#[derive(Clone, Debug)]
+pub struct AuthenticatedBatch {
+    network_id: [u8; 32],
+    slot: u64,
+    statements: Vec<Authenticated>,
+}
+
+impl AuthenticatedBatch {
+    pub fn network_id(&self) -> &[u8; 32] {
+        &self.network_id
+    }
+
+    pub fn slot(&self) -> u64 {
+        self.slot
+    }
+
+    pub fn statements(&self) -> &[Authenticated] {
+        &self.statements
+    }
+}
+
+/// The one value a quorum of your trust root externalized for a slot.
+#[derive(Clone, Debug)]
+pub struct ConfirmedValue {
+    network_id: [u8; 32],
+    slot: u64,
+    value_bytes: Vec<u8>,
+}
+
+impl ConfirmedValue {
+    pub fn network_id(&self) -> &[u8; 32] {
+        &self.network_id
+    }
+
+    pub fn slot(&self) -> u64 {
+        self.slot
+    }
+
+    pub fn value_bytes(&self) -> &[u8] {
+        &self.value_bytes
+    }
+}
+
+/// The validators you trust, pinned by fingerprint.
+///
+/// Taking a quorum set straight from the evidence is the classic mistake: the
+/// evidence is pledged by the same validators whose signatures are being checked.
+/// `from_pinned` forces you to commit out of band to the fingerprint of the set
+/// you trust and refuses anything else, and it checks the set is BFT-sound, so a
+/// quorum set read from the evidence cannot reach the verifier by accident.
+#[derive(Clone, Debug)]
+pub struct TrustRoot {
+    quorum_set: QuorumSet,
+    fingerprint: [u8; 32],
+}
+
+impl TrustRoot {
+    pub fn from_pinned(quorum_set_xdr: &[u8], expected_fingerprint: &[u8; 32]) -> Result<Self> {
+        let fingerprint = QuorumSet::hash(quorum_set_xdr);
+
+        if &fingerprint != expected_fingerprint {
+            return Err(ScpError::TrustRootFingerprintMismatch);
+        }
+
+        let quorum_set = QuorumSet::decode(quorum_set_xdr)?;
+
+        quorum_set.check_sane(true)?;
+
+        Ok(Self {
+            quorum_set,
+            fingerprint,
+        })
+    }
+
+    pub fn fingerprint(&self) -> &[u8; 32] {
+        &self.fingerprint
+    }
+}
+
+/// A header proven to carry the value consensus agreed on.
+///
+/// This authenticates the ledger's identity: its transaction set, close time and
+/// upgrades. It does not authenticate `tx_set_result_hash` or `bucket_list_hash`,
+/// because validators sign the scpValue, not the whole header. Promote it with
+/// [`bind_successor`] or reach it with [`walk_back`] before trusting those fields.
+#[derive(Clone, Debug)]
+pub struct ValueBoundHeader {
+    network_id: [u8; 32],
+    header: LedgerHeader,
+}
+
+impl ValueBoundHeader {
+    pub fn network_id(&self) -> &[u8; 32] {
+        &self.network_id
+    }
+
+    pub fn header(&self) -> &LedgerHeader {
+        &self.header
+    }
+}
+
+/// A header whose every field is authenticated.
+///
+/// Its `ledger_hash` is pinned either by the next slot naming it as predecessor
+/// ([`bind_successor`]) or by the trusted chain ([`walk_back`]), so the result
+/// and bucket-list hashes can be relied on. Only this can produce a
+/// [`VerifiedRouterRoot`].
+#[derive(Clone, Debug)]
+pub struct AuthenticatedHeader {
+    network_id: [u8; 32],
+    header: LedgerHeader,
+}
+
+impl AuthenticatedHeader {
+    pub fn network_id(&self) -> &[u8; 32] {
+        &self.network_id
+    }
+
+    pub fn header(&self) -> &LedgerHeader {
+        &self.header
+    }
+}
+
+/// A router state root proven to belong to an authenticated ledger.
+#[derive(Clone, Debug)]
+pub struct VerifiedRouterRoot {
+    ledger_seq: u32,
+    router_id: [u8; 32],
+    root: [u8; 32],
+}
+
+impl VerifiedRouterRoot {
+    pub fn ledger_seq(&self) -> u32 {
+        self.ledger_seq
+    }
+
+    pub fn router_id(&self) -> &[u8; 32] {
+        &self.router_id
+    }
+
+    pub fn root(&self) -> &[u8; 32] {
+        &self.root
+    }
+}
+
+/// Check every signature, slot and quorum-set preimage, and keep the context.
+pub fn authenticate(
+    network_id: &[u8; 32],
+    slot: u64,
+    envelopes_xdr: &[Vec<u8>],
+    quorum_sets_xdr: &[Vec<u8>],
+) -> Result<AuthenticatedBatch> {
+    let statements = envelope_authenticate(network_id, slot, envelopes_xdr, quorum_sets_xdr)?;
+
+    Ok(AuthenticatedBatch {
+        network_id: *network_id,
+        slot,
+        statements,
+    })
+}
+
+/// Confirm a single value reached confirm-commit for a pinned trust root.
+pub fn confirmed_value(
+    trust_root: &TrustRoot,
+    batch: &AuthenticatedBatch,
+) -> Result<ConfirmedValue> {
+    let value_bytes = commit_confirmed_value(&trust_root.quorum_set, &batch.statements)?;
+
+    Ok(ConfirmedValue {
+        network_id: batch.network_id,
+        slot: batch.slot,
+        value_bytes,
+    })
+}
+
+/// Bind the externalized value to a ledger header.
+pub fn bind_header(value: &ConfirmedValue, ledger_header_xdr: &[u8]) -> Result<ValueBoundHeader> {
+    let header = LedgerHeader::decode(ledger_header_xdr)?;
+
+    if u64::from(header.ledger_seq) != value.slot {
+        return Err(ScpError::HeaderSlotMismatch {
+            expected: value.slot,
+            found: u64::from(header.ledger_seq),
+        });
+    }
+
+    if header.scp_value_bytes != value.value_bytes {
+        return Err(ScpError::HeaderValueMismatch);
+    }
+
+    Ok(ValueBoundHeader {
+        network_id: value.network_id,
+        header,
+    })
+}
+
+/// Promote a value-bound header to fully authenticated using the next slot.
+///
+/// A header's `previous_ledger_hash` is not covered by the value its validators
+/// sign, so it cannot be trusted. The next slot's confirmed value is: its signed
+/// `txSetHash` fixes the transaction set, and that set names the real hash of
+/// ledger N. So this takes the successor's confirmed value and its transaction
+/// set, checks the set hashes to the signed `txSetHash`, reads the predecessor
+/// hash from the set, and authenticates header N only if its bytes hash to it.
+/// Pinning the hash of the whole header is what makes its result and bucket-list
+/// hashes trustworthy.
+pub fn bind_successor(
+    header: &ValueBoundHeader,
+    successor: &ConfirmedValue,
+    successor_tx_set_xdr: &[u8],
+) -> Result<AuthenticatedHeader> {
+    if successor_tx_set_xdr.len() > txset::MAX_TRANSACTION_SET_BYTES {
+        return Err(ScpError::InputTooLarge {
+            what: "transaction set",
+            limit: txset::MAX_TRANSACTION_SET_BYTES,
+        });
+    }
+
+    if header.network_id != successor.network_id {
+        return Err(ScpError::NetworkMismatch);
+    }
+
+    let expected = u64::from(header.header.ledger_seq) + 1;
+
+    if successor.slot != expected {
+        return Err(ScpError::SuccessorNotNext {
+            expected,
+            found: successor.slot,
+        });
+    }
+
+    let tx_set_hash = tx_set_hash_of_value(&successor.value_bytes)?;
+
+    if txset::hash(successor_tx_set_xdr) != tx_set_hash {
+        return Err(ScpError::SuccessorTxSetMismatch);
+    }
+
+    let predecessor = txset::previous_ledger_hash(successor_tx_set_xdr)?;
+
+    if header.header.ledger_hash != predecessor {
+        return Err(ScpError::ChainBroken {
+            seq: header.header.ledger_seq,
+            child: header.header.ledger_seq.saturating_add(1),
+        });
+    }
+
+    Ok(AuthenticatedHeader {
+        network_id: header.network_id,
+        header: header.header.clone(),
+    })
+}
+
+/// Extend trust backward from an authenticated anchor to an older ledger.
+///
+/// `headers_descending` is every header from the anchor's predecessor down to
+/// the target. On success the target is a genuine ancestor of the anchor, so its
+/// whole content is trusted.
+pub fn walk_back(
+    anchor: &AuthenticatedHeader,
+    headers_descending: &[&[u8]],
+    target_seq: u32,
+) -> Result<AuthenticatedHeader> {
+    let header = chain_walk_back_header(
+        anchor.header.ledger_seq,
+        &anchor.header.previous_ledger_hash,
+        headers_descending,
+        target_seq,
+    )?;
+
+    Ok(AuthenticatedHeader {
+        network_id: anchor.network_id,
+        header,
+    })
+}
+
+/// Verify the router state root an authenticated ledger published.
+///
+/// Takes only an [`AuthenticatedHeader`], so a header whose `tx_set_result_hash`
+/// has not been pinned cannot be used here.
+pub fn verify_router_root(
+    header: &AuthenticatedHeader,
+    result_pairs: &[Vec<u8>],
+    result_index: u32,
+    success_preimage_xdr: &[u8],
+    router_contract_id: &[u8; 32],
+    root_event_topic: &[u8],
+) -> Result<VerifiedRouterRoot> {
+    let inputs = Inputs {
+        tx_set_result_hash: &header.header.tx_set_result_hash,
+        result_pairs,
+        result_index,
+        success_preimage_xdr,
+        router_contract_id,
+        root_event_topic,
+    };
+
+    let root = verify_state_root(&inputs)?;
+
+    Ok(VerifiedRouterRoot {
+        ledger_seq: header.header.ledger_seq,
+        router_id: *router_contract_id,
+        root,
+    })
+}
+
+/// Authenticate the evidence for a slot and confirm its externalized value.
+pub fn verify_consensus(
+    network_id: &[u8; 32],
+    trust_root: &TrustRoot,
+    slot: u64,
+    envelopes_xdr: &[Vec<u8>],
+    quorum_sets_xdr: &[Vec<u8>],
+) -> Result<ConfirmedValue> {
+    let batch = authenticate(network_id, slot, envelopes_xdr, quorum_sets_xdr)?;
+
+    confirmed_value(trust_root, &batch)
+}
+
+/// Verify consensus and bind the value to a header in one step.
+pub fn verify_header(
+    network_id: &[u8; 32],
+    trust_root: &TrustRoot,
+    slot: u64,
+    envelopes_xdr: &[Vec<u8>],
+    quorum_sets_xdr: &[Vec<u8>],
+    ledger_header_xdr: &[u8],
+) -> Result<ValueBoundHeader> {
+    let value = verify_consensus(network_id, trust_root, slot, envelopes_xdr, quorum_sets_xdr)?;
+
+    bind_header(&value, ledger_header_xdr)
+}
+
+/// Everything needed to authenticate one ledger against the slot that follows it.
+///
+/// `slot` is ledger N; the `successor_*` fields are ledger N+1. The N+1 header is
+/// deliberately absent: it is not trusted, only its signed value and transaction
+/// set are.
+pub struct UpdateEvidence<'a> {
+    pub network_id: &'a [u8; 32],
+    pub slot: u64,
+    pub header_xdr: &'a [u8],
+    pub envelopes_xdr: &'a [alloc::vec::Vec<u8>],
+    pub quorum_sets_xdr: &'a [alloc::vec::Vec<u8>],
+    pub successor_envelopes_xdr: &'a [alloc::vec::Vec<u8>],
+    pub successor_quorum_sets_xdr: &'a [alloc::vec::Vec<u8>],
+    pub successor_tx_set_xdr: &'a [u8],
+}
+
+/// The one way to authenticate a ledger end to end, for both on-chain clients.
+///
+/// It runs the whole sequence in the single correct order so no caller can
+/// reassemble it wrongly: confirm ledger N's value against the pinned trust root,
+/// bind it to N's header, confirm the next slot's value, and pin N with the next
+/// slot's transaction set. The returned header has every field authenticated.
+pub fn verify_update(
+    pinned_root: &TrustRoot,
+    evidence: &UpdateEvidence<'_>,
+) -> Result<AuthenticatedHeader> {
+    let value = verify_consensus(
+        evidence.network_id,
+        pinned_root,
+        evidence.slot,
+        evidence.envelopes_xdr,
+        evidence.quorum_sets_xdr,
+    )?;
+
+    let bound = bind_header(&value, evidence.header_xdr)?;
+
+    let successor = verify_consensus(
+        evidence.network_id,
+        pinned_root,
+        evidence.slot + 1,
+        evidence.successor_envelopes_xdr,
+        evidence.successor_quorum_sets_xdr,
+    )?;
+
+    bind_successor(&bound, &successor, evidence.successor_tx_set_xdr)
+}
+
+extern crate alloc;

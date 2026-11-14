@@ -1,10 +1,12 @@
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::{
-    ballot::{authenticate, confirmed_commit, confirmed_value, Authenticated},
-    envelope::Envelope,
     error::ScpError,
-    quorum::QuorumSet,
+    primitives::scp::{
+        commit::{confirmed_commit, confirmed_value},
+        envelope::{authenticate, Authenticated, Envelope},
+        quorum::QuorumSet,
+    },
 };
 
 const LIVE_PASSPHRASE: &str = "Public Global Stellar Network ; September 2015";
@@ -92,7 +94,7 @@ fn a_tampered_envelope_cannot_be_authenticated() {
         let target = envelopes
             .iter()
             .position(|raw| {
-                stellar_consensus_verifier::envelope::Envelope::decode(raw)
+                stellar_consensus_verifier::primitives::scp::envelope::Envelope::decode(raw)
                     .expect("decodes")
                     .externalize()
                     .is_ok()
@@ -188,7 +190,7 @@ fn the_ballot_protocol_reaches_slots_externalize_alone_cannot() {
         let only: Vec<Vec<u8>> = envelopes
             .iter()
             .filter(|raw| {
-                stellar_consensus_verifier::envelope::Envelope::decode(raw)
+                stellar_consensus_verifier::primitives::scp::envelope::Envelope::decode(raw)
                     .expect("decodes")
                     .externalize()
                     .is_ok()

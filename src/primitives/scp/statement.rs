@@ -1,57 +1,8 @@
-use alloc::vec::Vec;
-
-use super::xdr::{Decoder, Result};
-use crate::error::ScpError;
-
-/// Marks a signature as covering a consensus message, so it cannot be reused
-/// as any other kind of Stellar signature.
-pub const ENVELOPE_TYPE_SCP: [u8; 4] = [0, 0, 0, 1];
-
-/// A validator still weighing a value.
-pub const SCP_ST_PREPARE: i32 = 0;
-/// A validator that has accepted a value and is waiting for others.
-pub const SCP_ST_CONFIRM: i32 = 1;
-/// A validator declaring a value final.
-pub const SCP_ST_EXTERNALIZE: i32 = 2;
-/// Part of choosing what to vote on, which this crate does not need.
-pub const SCP_ST_NOMINATE: i32 = 3;
-
-fn bad(what: &str) -> ScpError {
-    ScpError::InvalidWire(what.into())
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-/// A proposed value and which round proposed it.
-///
-/// Validators may need several rounds to agree; the value is what matters.
-pub struct Ballot {
-    pub counter: u32,
-    pub value: Vec<u8>,
-}
-
-impl Ballot {
-    /// Whether two ballots carry the same value, whatever round they came from.
-    pub fn compatible(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-
-    /// Whether this ballot is both older than another and about a different value.
-    pub fn less_and_incompatible(&self, other: &Self) -> bool {
-        self.compare(other) <= 0 && !self.compatible(other)
-    }
-
-    fn compare(&self, other: &Self) -> i32 {
-        if self.counter != other.counter {
-            return if self.counter < other.counter { -1 } else { 1 };
-        }
-
-        match self.value.cmp(&other.value) {
-            core::cmp::Ordering::Less => -1,
-            core::cmp::Ordering::Greater => 1,
-            core::cmp::Ordering::Equal => 0,
-        }
-    }
-}
+use crate::xdr::{Decoder, Result};
+use crate::{
+    error::ScpError,
+    primitives::scp::ballot::{compare_optional, read_ballot, read_optional_ballot, Ballot},
+};
 
 #[derive(Clone, Debug)]
 /// A validator weighing a value, not yet committed to it.
@@ -191,7 +142,7 @@ impl Statement {
         }
     }
 
-    fn check_sane(&self) -> Result<()> {
+    pub fn check_sane(&self) -> Result<()> {
         match self {
             Self::Prepare(p) => {
                 if p.ballot.counter == 0 {
@@ -260,101 +211,7 @@ impl Statement {
     }
 }
 
-fn compare_optional(older: Option<&Ballot>, newer: Option<&Ballot>) -> i32 {
-    match (older, newer) {
-        (Some(a), Some(b)) => a.compare(b),
-        (Some(_), None) => 1,
-        (None, Some(_)) => -1,
-        (None, None) => 0,
-    }
-}
-
-#[derive(Clone, Debug)]
-/// A signed statement from one validator.
-///
-/// `statement_bytes` is the exact slice the signature covers, kept as-is so
-/// nothing is lost or reshaped before the signature is checked.
-pub struct Envelope {
-    pub node_id: [u8; 32],
-    pub slot_index: u64,
-    pub statement: Statement,
-    pub signature: [u8; 64],
-    pub statement_bytes: Vec<u8>,
-}
-
-impl Envelope {
-    /// Reads a signed statement, rejecting one that is malformed or that no
-    /// honest validator would have sent.
-    pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let mut decoded = Decoder::new(bytes);
-
-        let statement_start = decoded.position();
-        let node_id = decoded.node_id()?;
-        let slot_index = decoded.u64()?;
-        let kind = decoded.i32()?;
-
-        let statement = match kind {
-            SCP_ST_PREPARE => Statement::Prepare(read_prepare(&mut decoded)?),
-            SCP_ST_CONFIRM => Statement::Confirm(read_confirm(&mut decoded)?),
-            SCP_ST_EXTERNALIZE => Statement::Externalize(read_externalize(&mut decoded)?),
-            SCP_ST_NOMINATE => return Err(ScpError::NominationStatement),
-            other => return Err(bad(&alloc::format!("unknown statement type {other}"))),
-        };
-
-        statement.check_sane()?;
-
-        let statement_bytes = decoded.slice_from(statement_start).to_vec();
-        let signature = decoded.signature()?;
-
-        decoded.finish()?;
-
-        Ok(Self {
-            node_id,
-            slot_index,
-            statement,
-            signature,
-            statement_bytes,
-        })
-    }
-
-    /// The statement as a final declaration, or an error if it is not one.
-    pub fn externalize(&self) -> Result<&Externalize> {
-        self.statement
-            .as_externalize()
-            .ok_or(ScpError::NotExternalize)
-    }
-
-    /// Rebuilds exactly what the validator signed.
-    ///
-    /// Includes the network it was signing for, so a message from testnet cannot
-    /// be replayed on the public network.
-    pub fn signing_payload(&self, network_id: &[u8; 32]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(32 + 4 + self.statement_bytes.len());
-
-        out.extend_from_slice(network_id);
-        out.extend_from_slice(&ENVELOPE_TYPE_SCP);
-        out.extend_from_slice(&self.statement_bytes);
-
-        out
-    }
-}
-
-fn read_ballot(d: &mut Decoder<'_>) -> Result<Ballot> {
-    let counter = d.u32()?;
-    let value = d.var_bytes()?.to_vec();
-
-    Ok(Ballot { counter, value })
-}
-
-fn read_optional_ballot(d: &mut Decoder<'_>) -> Result<Option<Ballot>> {
-    match d.u32()? {
-        0 => Ok(None),
-        1 => Ok(Some(read_ballot(d)?)),
-        _ => Err(bad("optional ballot flag is not 0 or 1")),
-    }
-}
-
-fn read_prepare(d: &mut Decoder<'_>) -> Result<Prepare> {
+pub fn read_prepare(d: &mut Decoder<'_>) -> Result<Prepare> {
     let quorum_set_hash = d.fixed32()?;
     let ballot = read_ballot(d)?;
     let prepared = read_optional_ballot(d)?;
@@ -372,7 +229,7 @@ fn read_prepare(d: &mut Decoder<'_>) -> Result<Prepare> {
     })
 }
 
-fn read_confirm(d: &mut Decoder<'_>) -> Result<Confirm> {
+pub fn read_confirm(d: &mut Decoder<'_>) -> Result<Confirm> {
     let ballot = read_ballot(d)?;
     let prepared_counter = d.u32()?;
     let commit_counter = d.u32()?;
@@ -388,7 +245,7 @@ fn read_confirm(d: &mut Decoder<'_>) -> Result<Confirm> {
     })
 }
 
-fn read_externalize(d: &mut Decoder<'_>) -> Result<Externalize> {
+pub fn read_externalize(d: &mut Decoder<'_>) -> Result<Externalize> {
     let commit = read_ballot(d)?;
     let highest_confirmed_ballot_counter = d.u32()?;
     let commit_quorum_set_hash = d.fixed32()?;
@@ -399,5 +256,3 @@ fn read_externalize(d: &mut Decoder<'_>) -> Result<Externalize> {
         commit_quorum_set_hash,
     })
 }
-
-extern crate alloc;
