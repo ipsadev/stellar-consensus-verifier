@@ -53,11 +53,13 @@ fn bad(what: &str) -> ScpError {
     ScpError::InvalidWire(what.into())
 }
 
-/// Finds the single state root the router published in a success preimage.
+/// Finds the state root the router left behind in a success preimage.
 ///
 /// Walks the contract events, keeps only those from the router contract whose
-/// topic matches, and returns the one 32-byte root they carry. Ambiguity or
-/// absence is an error, not a guess.
+/// topic matches, and returns the 32-byte root the last of them carries. The
+/// preimage holds only events from calls that succeeded, in the order they were
+/// emitted, and each root covers every commitment before it, so the last one is
+/// the router's state when the invocation ended. Absence is an error.
 pub(crate) fn root_from_preimage(
     preimage: &[u8],
     router_contract_id: &[u8; 32],
@@ -71,10 +73,6 @@ pub(crate) fn root_from_preimage(
 
     for _ in 0..n_events {
         if let Some(root) = read_event(&mut d, router_contract_id, root_event_topic)? {
-            if found.is_some() {
-                return Err(ScpError::AmbiguousRouterEvent);
-            }
-
             found = Some(root);
         }
     }

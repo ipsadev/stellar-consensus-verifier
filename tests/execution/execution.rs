@@ -9,6 +9,8 @@ const TOPIC: &[u8] = b"ibc_root";
 const ROOT: [u8; 32] = [0x5a; 32];
 
 const TX_FAILED: i32 = -1;
+const TX_FEE_BUMP_INNER_SUCCESS: i32 = 1;
+const TX_FEE_BUMP_INNER_FAILED: i32 = -13;
 const OP_BAD_AUTH: i32 = -1;
 const OP_TYPE_PAYMENT: i32 = 1;
 const INVOKE_HOST_FUNCTION_TRAPPED: i32 = -2;
@@ -166,6 +168,35 @@ fn invoke_body(operation: i32, operation_type: i32, outcome: i32, success: &[u8;
     out.extend_from_slice(&i32_bytes(0));
 
     out
+}
+
+fn fee_bump_body(inner_code: i32, inner_body: &[u8], inner_extension: i32) -> Vec<u8> {
+    let mut out = [0xcd; 32].to_vec();
+
+    out.extend_from_slice(&u64_bytes(90));
+    out.extend_from_slice(&i32_bytes(inner_code));
+    out.extend_from_slice(inner_body);
+    out.extend_from_slice(&i32_bytes(inner_extension));
+    out.extend_from_slice(&i32_bytes(0));
+
+    out
+}
+
+fn inner_invoke_body(success: &[u8; 32]) -> Vec<u8> {
+    let mut out = invoke_body(0, 24, 0, success);
+
+    out.truncate(out.len() - 4);
+
+    out
+}
+
+fn fee_bump_pair(preimage: &[u8]) -> Vec<u8> {
+    let success: [u8; 32] = Sha256::digest(preimage).into();
+
+    result_pair(
+        TX_FEE_BUMP_INNER_SUCCESS,
+        &fee_bump_body(0, &inner_invoke_body(&success), 0),
+    )
 }
 
 fn success_pair(preimage: &[u8]) -> Vec<u8> {
@@ -384,11 +415,115 @@ fn an_unknown_transaction_result_extension_is_refused() {
     );
 }
 
-#[test]
-fn two_root_events_from_the_router_are_ambiguous() {
-    let preimage = preimage(void(), &[root_event(), root_event()]);
+fn root_event_carrying(root: &[u8; 32]) -> Vec<u8> {
+    event(
+        0,
+        Some(ROUTER),
+        CONTRACT_EVENT,
+        0,
+        &[symbol(TOPIC)],
+        bytes(root),
+    )
+}
 
-    assert_eq!(prove_one(&preimage), Err(ScpError::AmbiguousRouterEvent));
+#[test]
+fn the_last_root_event_from_the_router_is_the_one_returned() {
+    let earlier = [0x01; 32];
+    let preimage = preimage(
+        void(),
+        &[root_event_carrying(&earlier), root_event_carrying(&ROOT)],
+    );
+
+    assert_eq!(prove_one(&preimage), Ok(ROOT));
+}
+
+#[test]
+fn a_root_event_after_the_last_one_from_another_contract_does_not_count() {
+    let foreign = event(
+        0,
+        Some([0x99; 32]),
+        CONTRACT_EVENT,
+        0,
+        &[symbol(TOPIC)],
+        bytes(&[0x02; 32]),
+    );
+    let preimage = preimage(void(), &[root_event(), foreign]);
+
+    assert_eq!(prove_one(&preimage), Ok(ROOT));
+}
+
+#[test]
+fn a_fee_bumped_invocation_proves_its_root() {
+    let preimage = preimage(void(), &[root_event()]);
+
+    assert_eq!(prove(&[fee_bump_pair(&preimage)], 0, &preimage), Ok(ROOT));
+}
+
+#[test]
+fn a_fee_bump_whose_inner_transaction_failed_is_refused() {
+    let preimage = preimage(void(), &[root_event()]);
+    let pair = result_pair(
+        TX_FEE_BUMP_INNER_FAILED,
+        &fee_bump_body(TX_FAILED, &u32_bytes(0), 0),
+    );
+    let err = prove(&[pair], 0, &preimage).expect_err("the inner transaction published nothing");
+
+    assert_eq!(
+        err,
+        ScpError::TransactionNotSuccessful {
+            code: TX_FEE_BUMP_INNER_FAILED
+        }
+    );
+}
+
+#[test]
+fn a_fee_bump_reporting_success_over_a_failed_inner_result_is_refused() {
+    let preimage = preimage(void(), &[root_event()]);
+    let pair = result_pair(
+        TX_FEE_BUMP_INNER_SUCCESS,
+        &fee_bump_body(TX_FAILED, &u32_bytes(0), 0),
+    );
+    let err = prove(&[pair], 0, &preimage).expect_err("only a successful inner result counts");
+
+    assert_eq!(err, ScpError::TransactionNotSuccessful { code: TX_FAILED });
+}
+
+#[test]
+fn a_fee_bumped_invocation_must_match_its_preimage() {
+    let committed = preimage(void(), &[root_event()]);
+    let substituted = preimage(symbol(b"forged"), &[root_event()]);
+    let err = prove(&[fee_bump_pair(&committed)], 0, &substituted)
+        .expect_err("the inner success hash binds the preimage");
+
+    assert_eq!(err, ScpError::SuccessPreimageMismatch);
+}
+
+#[test]
+fn an_unknown_inner_result_extension_is_refused() {
+    let preimage = preimage(void(), &[root_event()]);
+    let success: [u8; 32] = Sha256::digest(&preimage).into();
+    let pair = result_pair(
+        TX_FEE_BUMP_INNER_SUCCESS,
+        &fee_bump_body(0, &inner_invoke_body(&success), 1),
+    );
+
+    assert_invalid_wire(
+        prove(&[pair], 0, &preimage),
+        "an inner result extension this crate cannot read",
+    );
+}
+
+#[test]
+fn trailing_bytes_after_a_fee_bump_result_are_refused() {
+    let preimage = preimage(void(), &[root_event()]);
+    let mut pair = fee_bump_pair(&preimage);
+
+    pair.extend_from_slice(&[0, 0, 0, 0]);
+
+    assert_invalid_wire(
+        prove(&[pair], 0, &preimage),
+        "bytes after the transaction result",
+    );
 }
 
 #[test]
