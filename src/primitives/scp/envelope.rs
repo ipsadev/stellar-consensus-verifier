@@ -5,9 +5,9 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use crate::xdr::{Decoder, Result};
 use crate::{
     error::{bad, ScpError},
-    primitives::scp::quorum::{singleton_quorum_set, NodeId, QuorumSet},
-    primitives::scp::statement::{
-        read_confirm, read_externalize, read_prepare, Externalize, Statement,
+    primitives::scp::{
+        quorum::{singleton_quorum_set, NodeId, QuorumSet},
+        statement::{read_confirm, read_externalize, read_prepare, Externalize, Statement},
     },
 };
 

@@ -2,10 +2,12 @@ use alloc::vec::Vec;
 
 use crate::{
     error::ScpError,
-    primitives::scp::ballot::Ballot,
-    primitives::scp::envelope::{latest_statements, Authenticated},
-    primitives::scp::quorum::{is_quorum, NodeId, QuorumSet},
-    primitives::scp::statement::Statement,
+    primitives::scp::{
+        ballot::Ballot,
+        envelope::{latest_statements, Authenticated},
+        quorum::{is_quorum, NodeId, QuorumSet},
+        statement::Statement,
+    },
     xdr::Result,
 };
 

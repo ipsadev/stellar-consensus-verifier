@@ -1,7 +1,9 @@
 use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::{
-    primitives::analysis::{quorum_intersection_refuted, quorum_split_threatens},
-    primitives::scp::quorum::*,
+    primitives::{
+        analysis::{quorum_intersection_refuted, quorum_split_threatens},
+        scp::quorum::*,
+    },
     xdr::MAX_QSET_DEPTH,
 };
 

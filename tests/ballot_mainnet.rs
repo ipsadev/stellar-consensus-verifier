@@ -2,9 +2,11 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use stellar_consensus_verifier::{
     error::ScpError,
-    primitives::scp::commit::{confirmed_commit, confirmed_value},
-    primitives::scp::envelope::{authenticate, Authenticated, Envelope},
-    primitives::scp::quorum::QuorumSet,
+    primitives::scp::{
+        commit::{confirmed_commit, confirmed_value},
+        envelope::{authenticate, Authenticated, Envelope},
+        quorum::QuorumSet,
+    },
 };
 
 const LIVE_PASSPHRASE: &str = "Public Global Stellar Network ; September 2015";

@@ -1,11 +1,13 @@
 use ed25519_dalek::{Signer, SigningKey};
 use stellar_consensus_verifier::{
     error::ScpError,
-    primitives::scp::ballot::*,
-    primitives::scp::commit::*,
-    primitives::scp::envelope::{authenticate, latest_statements, Authenticated},
-    primitives::scp::quorum::{singleton_quorum_set, NodeId, QuorumSet},
-    primitives::scp::statement::{Confirm, Externalize, Prepare, Statement},
+    primitives::scp::{
+        ballot::*,
+        commit::*,
+        envelope::{authenticate, latest_statements, Authenticated},
+        quorum::{singleton_quorum_set, NodeId, QuorumSet},
+        statement::{Confirm, Externalize, Prepare, Statement},
+    },
 };
 
 const NETWORK: [u8; 32] = [0x77; 32];

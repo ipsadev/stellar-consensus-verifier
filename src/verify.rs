@@ -2,12 +2,19 @@ use alloc::vec::Vec;
 
 use crate::{
     error::ScpError,
-    primitives::execution::results::{verify_state_root, Inputs},
-    primitives::scp::commit::confirmed_value as commit_confirmed_value,
-    primitives::scp::envelope::{authenticate as envelope_authenticate, Authenticated},
-    primitives::scp::quorum::QuorumSet,
-    primitives::stellar::chain::walk_back as chain_walk_back,
-    primitives::stellar::header::LedgerHeader,
+    primitives::{
+        execution::results::{verify_state_root, Inputs},
+        scp::{
+            commit::confirmed_value as commit_confirmed_value,
+            envelope::{authenticate as envelope_authenticate, Authenticated},
+            quorum::QuorumSet,
+        },
+        stellar::{
+            chain::walk_back as chain_walk_back,
+            header::{tx_set_hash_of_value, LedgerHeader},
+            txset,
+        },
+    },
     xdr::Result,
 };
 
@@ -166,26 +173,40 @@ pub fn bind_header(value: &ConfirmedValue, ledger_header_xdr: &[u8]) -> Result<V
 
 /// Promote a value-bound header to fully authenticated using the next slot.
 ///
-/// `successor` must be the value-bound header for the following ledger, and it
-/// must name this header's `ledger_hash` as its predecessor. That link pins this
-/// header's whole content, so its result and bucket-list hashes become trusted.
+/// A header's `previous_ledger_hash` is not covered by the value its validators
+/// sign, so it cannot be trusted. The next slot's confirmed value is: its signed
+/// `txSetHash` fixes the transaction set, and that set names the real hash of
+/// ledger N. So this takes the successor's confirmed value and its transaction
+/// set, checks the set hashes to the signed `txSetHash`, reads the predecessor
+/// hash from the set, and authenticates header N only if its bytes hash to it.
+/// Pinning the hash of the whole header is what makes its result and bucket-list
+/// hashes trustworthy.
 pub fn bind_successor(
     header: &ValueBoundHeader,
-    successor: &ValueBoundHeader,
+    successor: &ConfirmedValue,
+    successor_tx_set_xdr: &[u8],
 ) -> Result<AuthenticatedHeader> {
     let expected = header.header.ledger_seq + 1;
 
-    if successor.header.ledger_seq != expected {
+    if successor.slot != u64::from(expected) {
         return Err(ScpError::SuccessorNotNext {
             expected,
-            found: successor.header.ledger_seq,
+            found: successor.slot as u32,
         });
     }
 
-    if successor.header.previous_ledger_hash != header.header.ledger_hash {
+    let tx_set_hash = tx_set_hash_of_value(&successor.value_bytes)?;
+
+    if txset::hash(successor_tx_set_xdr) != tx_set_hash {
+        return Err(ScpError::SuccessorTxSetMismatch);
+    }
+
+    let predecessor = txset::previous_ledger_hash(successor_tx_set_xdr)?;
+
+    if header.header.ledger_hash != predecessor {
         return Err(ScpError::ChainBroken {
             seq: header.header.ledger_seq,
-            child: successor.header.ledger_seq,
+            child: expected,
         });
     }
 

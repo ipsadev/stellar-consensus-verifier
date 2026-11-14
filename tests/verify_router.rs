@@ -1,7 +1,8 @@
 use serde::Deserialize;
 use stellar_consensus_verifier::{
+    error::ScpError,
     primitives::scp::quorum::QuorumSet,
-    verify::{bind_successor, verify_header, verify_router_root},
+    verify::{bind_successor, verify_consensus, verify_header, verify_router_root, ConfirmedValue},
 };
 
 #[derive(Deserialize)]
@@ -23,7 +24,7 @@ struct Successor {
     slot: u64,
     envelopes: Vec<String>,
     quorum_sets: Vec<String>,
-    header: String,
+    tx_set: String,
 }
 
 #[derive(Deserialize)]
@@ -53,24 +54,27 @@ fn fixture() -> Fixture {
     serde_json::from_str(include_str!("fixtures/testnet-router-chain.json")).expect("fixture")
 }
 
-// The whole typed pipeline on a real testnet ledger: authenticate both slots,
-// pin the router ledger with its successor, then extract its router state root.
-// verify_router_root only accepts an AuthenticatedHeader, so the un-pinned
-// ValueBoundHeader from bind_header cannot reach it; that gate is a compile-time
-// guarantee, not something this test can exercise at runtime.
+fn successor_value(fx: &Fixture, nid: &[u8; 32], local: &QuorumSet) -> ConfirmedValue {
+    verify_consensus(
+        nid,
+        local,
+        fx.successor.slot,
+        &hexvec(&fx.successor.envelopes),
+        &hexvec(&fx.successor.quorum_sets),
+    )
+    .expect("the successor's value is confirmed")
+}
+
+// The whole typed pipeline on a real testnet ledger: value-bind the router
+// ledger, authenticate it against the next slot's transaction set, then extract
+// its router state root. verify_router_root only accepts an AuthenticatedHeader,
+// a compile-time guarantee this test cannot bypass at runtime.
 #[test]
 fn the_typed_pipeline_extracts_a_router_root_from_a_real_testnet_ledger() {
     let fx = fixture();
     let nid = h32(&fx.network_id);
     let local = QuorumSet::decode(&unhex(&fx.local_quorum_set)).expect("local quorum set");
     let r = &fx.router;
-    let s = &fx.successor;
-
-    assert_eq!(
-        s.slot,
-        r.slot + 1,
-        "the fixture must carry consecutive ledgers"
-    );
 
     let router_bound = verify_header(
         &nid,
@@ -82,18 +86,12 @@ fn the_typed_pipeline_extracts_a_router_root_from_a_real_testnet_ledger() {
     )
     .expect("the router ledger binds to consensus");
 
-    let successor_bound = verify_header(
-        &nid,
-        &local,
-        s.slot,
-        &hexvec(&s.envelopes),
-        &hexvec(&s.quorum_sets),
-        &unhex(&s.header),
+    let anchored = bind_successor(
+        &router_bound,
+        &successor_value(&fx, &nid, &local),
+        &unhex(&fx.successor.tx_set),
     )
-    .expect("the successor ledger binds to consensus");
-
-    let anchored = bind_successor(&router_bound, &successor_bound)
-        .expect("the successor pins the router ledger's whole header");
+    .expect("the successor's transaction set pins the router ledger");
 
     let router_id = h32(&r.router_contract_id);
 
@@ -110,4 +108,29 @@ fn the_typed_pipeline_extracts_a_router_root_from_a_real_testnet_ledger() {
     assert_eq!(verified.root(), &h32(&r.expected_root));
     assert_eq!(verified.ledger_seq(), r.slot as u32);
     assert_eq!(verified.router_id(), &router_id);
+}
+
+#[test]
+fn bind_successor_rejects_a_tampered_successor_tx_set() {
+    let fx = fixture();
+    let nid = h32(&fx.network_id);
+    let local = QuorumSet::decode(&unhex(&fx.local_quorum_set)).expect("local quorum set");
+
+    let router_bound = verify_header(
+        &nid,
+        &local,
+        fx.router.slot,
+        &hexvec(&fx.router.envelopes),
+        &hexvec(&fx.router.quorum_sets),
+        &unhex(&fx.router.header),
+    )
+    .expect("the router ledger binds");
+
+    let mut tx_set = unhex(&fx.successor.tx_set);
+    tx_set[40] ^= 0x01;
+
+    let err = bind_successor(&router_bound, &successor_value(&fx, &nid, &local), &tx_set)
+        .expect_err("a transaction set that no longer hashes to the signed value is refused");
+
+    assert_eq!(err, ScpError::SuccessorTxSetMismatch);
 }

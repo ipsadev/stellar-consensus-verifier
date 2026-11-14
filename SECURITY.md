@@ -21,7 +21,7 @@ Everything else is attacker-controlled and is checked before it is believed: all
 
 The `verify` module is the front door and the recommended way to use this crate. It carries trust in the types: each step takes the value the previous step produced and returns a new one whose fields are private, so holding a value is proof the earlier checks ran. The pipeline is `authenticate` → `AuthenticatedBatch`, `confirmed_value` → `ConfirmedValue`, `bind_header` → `ValueBoundHeader`, then either `bind_successor` or `walk_back` → `AuthenticatedHeader`, then `verify_router_root` → `VerifiedRouterRoot`. `verify_consensus` and `verify_header` are convenience wrappers for the first steps, and `confirmed_value` enforces the strict trust-root check (`local.check_sane(true)`).
 
-The two header types encode the `bind_header` rule. A `ValueBoundHeader` has its transaction set, close time and upgrades authenticated, but not its `tx_set_result_hash` or `bucket_list_hash`, because validators sign the scpValue, not the whole header. Only an `AuthenticatedHeader` — whose `ledger_hash` is pinned by the next slot (`bind_successor`) or by the chain (`walk_back`) — has every field authenticated, and only an `AuthenticatedHeader` can be passed to `verify_router_root`. A caller therefore cannot extract a router state root from a header whose results field was never authenticated; the code will not compile.
+The two header types encode the `bind_header` rule. A `ValueBoundHeader` has its transaction set, close time and upgrades authenticated, but not its `tx_set_result_hash` or `bucket_list_hash`, because validators sign the scpValue, not the whole header. Only an `AuthenticatedHeader` — whose whole-bytes hash is pinned by the next slot's transaction set (`bind_successor`) or by the chain (`walk_back`) — has every field authenticated, and only an `AuthenticatedHeader` can be passed to `verify_router_root`. A caller therefore cannot extract a router state root from a header whose results field was never authenticated; the code will not compile.
 
 The individual steps below are what these functions do internally. They wrap the primitives under `primitives`, grouped by what each guarantees: `primitives::scp` (envelope, authentication, commit, quorum acceptance), `primitives::stellar` (header, txset, chain), `primitives::execution` (results, router_event), and `primitives::analysis` (quorum-split checks that do not affect acceptance). These are available for advanced callers who assemble the pipeline themselves and take on the responsibilities under "Known gaps".
 
@@ -37,22 +37,27 @@ The steps must run in this order. Each one is sound only if the steps before it 
 
 3. Bind the value to a header. Decode the header with `ledger::LedgerHeader::decode`, then require `header.scp_value_bytes == confirmed_value(...)`.
    - Establishes: this specific header carries the exact value consensus agreed on, so `header.ledger_hash` is the hash of the ledger the quorum externalized.
-   - Does not establish: that the header's other fields are authentic. `tx_set_result_hash` and `bucket_list_hash` are inside the signed value only indirectly; binding the value authenticates the header's identity, not every field. To trust those fields you additionally need the next ledger's `previous_ledger_hash` to equal `sha256(header)` (the next-slot binding), or you must reach this header by walking back from a recent anchor you trust (step 4).
-   - This binding step currently lives only in the test suite (`tests/ledger_mainnet.rs`), not in `src/`. Until it is a function here, it is the caller's responsibility, and it is the single easiest step to forget. See "Known gaps".
+   - Does not establish: that the header's other fields are authentic. `tx_set_result_hash` and `bucket_list_hash` are not covered by the signed value, so this step cannot vouch for them. A header's own `previous_ledger_hash` cannot be used to pin it either, because it too is unsigned and attacker-editable. They become trustworthy only once the header's whole-bytes hash is pinned, by `bind_successor` (step 4a) or `walk_back` (step 4b).
 
-4. `chain::walk_back(anchor_seq, anchor_previous_ledger_hash, headers_descending, target_seq) -> ChainedLedger`, optional.
-   - Establishes: the target ledger is a genuine ancestor of the anchor, by following the `previous_ledger_hash` links down from a ledger you already trust. Because of hash chaining, one recent trusted ledger certifies its whole history.
-   - Does not establish: anything about the anchor itself. You must have trusted the anchor by some other means (typically steps 1 through 3 on a recent ledger).
+4a. `verify::bind_successor(header, successor_value, successor_tx_set_xdr) -> AuthenticatedHeader`.
+   - Establishes: this header is ledger N in full. The successor's confirmed value fixes the next slot's `txSetHash`; the supplied transaction set must hash to it; that set's `previousLedgerHash` is the real hash of ledger N (for an empty-set close, it comes from the value instead); and this header is authenticated only if its bytes hash to that. Pinning the whole-bytes hash makes `tx_set_result_hash` and `bucket_list_hash` trustworthy.
+   - Assumption: it relies on the stellar-core Herder rule that a validator only votes for a transaction set built on its own last closed ledger, so the set's `previousLedgerHash` is the hash of the ledger consensus actually extended. That is an assumption about honest validators, not a check.
 
-5. `results::verify_state_root(&Inputs) -> [u8; 32]`, optional.
-   - Establishes: the supplied result pairs hash to the header's `tx_set_result_hash`, the named transaction succeeded, and the router contract you named emitted exactly one state-root event, whose 32-byte payload is returned.
-   - Does not establish: that `tx_set_result_hash` itself is authentic. This step trusts the hash you pass in, so it is only as sound as the header field feeding it, which must have been authenticated per the caveat in step 3.
+4b. `verify::walk_back(anchor, headers_descending, target_seq) -> AuthenticatedHeader`, optional.
+   - Establishes: the target ledger is a genuine ancestor of the anchor, by following the `previous_ledger_hash` links down from a header already pinned (step 4a). Because of hash chaining, one recent pinned ledger certifies its whole history.
+   - Does not establish: anything about the anchor itself. The anchor must already be an `AuthenticatedHeader`, which only steps 4a or 4b produce.
+
+5. `verify::verify_router_root(authenticated_header, …) -> VerifiedRouterRoot`, optional.
+   - Establishes: the supplied result pairs hash to the header's `tx_set_result_hash`, the named transaction succeeded, and the router contract you named emitted exactly one contract event whose single topic is the agreed symbol, whose 32-byte payload is returned.
+   - Takes only an `AuthenticatedHeader`, so the `tx_set_result_hash` it reads has been pinned by step 4a or 4b; it cannot be called on a merely value-bound header.
 
 ## What a full run proves, and what it does not
 
 A full run proves: a quorum of the validators you chose externalized this ledger, this header is that ledger, it descends from an anchor you trust, and this router state root was published by it.
 
 It does not prove: that your trust root is the right one, that quorum intersection holds, or that the network has not partitioned beneath your chosen validators. Those are assumptions, not results, and no light client can check them for itself.
+
+It also does not judge freshness. A full run proves a ledger was agreed and is authentic, not that it is recent; an old but validly agreed ledger passes every check. Rejecting a stale ledger is the consuming light client's job, using the authenticated header's ledger sequence and close time.
 
 ## Known gaps and caller responsibilities
 
@@ -68,7 +73,7 @@ The following are addressed when you use the `verify` module, and remain the cal
 
 These remain open regardless of which layer you use:
 
-- `verify_signature` uses ed25519-dalek's strict, cofactorless verification, which rejects non-canonical encodings and small-order public keys. stellar-core verifies through libsodium, which uses the cofactored equation, so for an adversarial signature the two can disagree: this crate may reject a cofactored or small-order signature that stellar-core accepts, but it never accepts one stellar-core rejects. That is conservative (a liveness, not a safety, difference) and only arises for malformed signatures no honest validator produces; edge cases are covered in `tests/signature.rs`. A live differential against a compiled stellar-core, like the quorum oracle, is the complete check and is still to be built.
+- `verify_signature` uses ed25519-dalek's strict, cofactorless verification, which rejects non-canonical encodings and small-order public keys. stellar-core verifies through libsodium, which uses the cofactored equation, so for an adversarial signature the two can disagree: this crate may reject a cofactored or small-order signature that stellar-core accepts. The converse — that it never accepts one stellar-core rejects — is expected from strict verification being the tighter check, but is not claimed here until a differential test against stellar-core's libsodium check exists. Either way the difference only arises for malformed signatures no honest validator produces; edge cases are covered in `tests/signature.rs`. A live differential against a compiled stellar-core, like the quorum oracle, is the complete check and is still to be built.
 
 ## The one assumption behind all of it
 
