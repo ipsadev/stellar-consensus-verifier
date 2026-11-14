@@ -30,7 +30,7 @@ fn h32(s: &str) -> [u8; 32] {
 }
 
 fn fixture() -> Fixture {
-    serde_json::from_str(include_str!("fixtures/testnet-router-root.json")).expect("fixture")
+    serde_json::from_str(include_str!("../fixtures/testnet-router-root.json")).expect("fixture")
 }
 
 #[test]

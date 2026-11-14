@@ -28,7 +28,7 @@ fn hexvec(items: &[String]) -> Vec<Vec<u8>> {
 }
 
 fn fixture() -> Fixture {
-    serde_json::from_str(include_str!("fixtures/mainnet-value.json")).expect("fixture")
+    serde_json::from_str(include_str!("../fixtures/mainnet-value.json")).expect("fixture")
 }
 
 #[test]

@@ -16,7 +16,7 @@ fn unhex(s: &str) -> Vec<u8> {
 }
 
 fn recorded() -> Vec<Recorded> {
-    serde_json::from_str(include_str!("fixtures/testnet-protocol-30-headers.json")).unwrap()
+    serde_json::from_str(include_str!("../fixtures/testnet-protocol-30-headers.json")).unwrap()
 }
 
 #[test]

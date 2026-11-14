@@ -47,11 +47,11 @@ fn hexvec(items: &[String]) -> Vec<Vec<u8>> {
 }
 
 fn slots() -> Slots {
-    serde_json::from_str(include_str!("fixtures/mainnet-slots.json")).expect("slots fixture")
+    serde_json::from_str(include_str!("../fixtures/mainnet-slots.json")).expect("slots fixture")
 }
 
 fn headers() -> Headers {
-    serde_json::from_str(include_str!("fixtures/mainnet-ledger-headers.json"))
+    serde_json::from_str(include_str!("../fixtures/mainnet-ledger-headers.json"))
         .expect("headers fixture")
 }
 

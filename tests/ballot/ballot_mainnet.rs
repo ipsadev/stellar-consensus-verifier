@@ -42,7 +42,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn fixture() -> Fixture {
-    serde_json::from_str(include_str!("fixtures/mainnet-slots.json")).expect("fixture")
+    serde_json::from_str(include_str!("../fixtures/mainnet-slots.json")).expect("fixture")
 }
 
 fn network_id(network: &str) -> [u8; 32] {
