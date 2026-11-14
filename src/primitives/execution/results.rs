@@ -56,13 +56,17 @@ pub fn verify_result_set_hash(
         });
     }
 
-    let total_bytes: usize = result_pairs.iter().map(Vec::len).sum();
+    let mut total_bytes: usize = 0;
 
-    if total_bytes > MAX_RESULT_SET_BYTES {
-        return Err(ScpError::InputTooLarge {
-            what: "result set",
-            limit: MAX_RESULT_SET_BYTES,
-        });
+    for pair in result_pairs {
+        total_bytes = total_bytes.saturating_add(pair.len());
+
+        if total_bytes > MAX_RESULT_SET_BYTES {
+            return Err(ScpError::InputTooLarge {
+                what: "result set",
+                limit: MAX_RESULT_SET_BYTES,
+            });
+        }
     }
 
     let mut hasher = Sha256::new();
