@@ -2,6 +2,16 @@
 
 All notable changes to this crate are recorded here. It follows semantic versioning: a major bump signals breaking API changes.
 
+## 3.0.0
+
+### Changed
+
+- `TrustRoot::from_pinned` takes a third argument, `min_orgs`, and enforces a trust-root floor on top of stellar-core's strict-majority sanity: the top-level threshold must be at least two thirds of its entries, and the top level must name at least `min_orgs` orgs. A 1-of-1 root, or any root below two thirds or below the org count, is refused (ibc-contracts audit c3, d3: a 1-of-1 root passed before). The floor is top-level only, since an org is the unit of Byzantine fault and real tier-1 roots run orgs below two thirds internally (mainnet has `3-of-5` orgs inside its `5-of-7` root). `check_sane`, which mirrors stellar-core's `isQuorumSetSane`, is unchanged. New errors `TrustRootThresholdBelowTwoThirds` and `TrustRootTooFewOrgs`.
+
+### Documentation
+
+- `SECURITY.md` describes the floor and why: two thirds is the Byzantine bound that makes quorums intersect in an honest org, `min_orgs` forces the trust to be distributed, and the floor is top-level because an org's internal threshold is its own business.
+
 ## 2.3.0
 
 ### Changed

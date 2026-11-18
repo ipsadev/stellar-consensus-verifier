@@ -79,7 +79,7 @@ fn trust_root(fx: &Fixture) -> TrustRoot {
     let xdr = unhex(&fx.local_quorum_set);
     let fingerprint: [u8; 32] = Sha256::digest(&xdr).into();
 
-    TrustRoot::from_pinned(&xdr, &fingerprint).expect("pinned sound trust root")
+    TrustRoot::from_pinned(&xdr, &fingerprint, 1).expect("pinned sound trust root")
 }
 
 fn successor_value(fx: &Fixture, nid: &[u8; 32], local: &TrustRoot) -> ConfirmedValue {
@@ -302,7 +302,7 @@ fn bind_successor_rejects_a_successor_from_another_network() {
     let mn_nid = h32(&mn.network_id);
     let mn_xdr = unhex(&mn.local_quorum_set);
     let mn_fingerprint: [u8; 32] = Sha256::digest(&mn_xdr).into();
-    let mn_root = TrustRoot::from_pinned(&mn_xdr, &mn_fingerprint).expect("mainnet trust root");
+    let mn_root = TrustRoot::from_pinned(&mn_xdr, &mn_fingerprint, 1).expect("mainnet trust root");
 
     let mainnet_bound = verify_header(
         &mn_nid,

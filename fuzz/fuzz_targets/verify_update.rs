@@ -79,7 +79,7 @@ fuzz_target!(|data: &[u8]| {
 
     let fingerprint: [u8; 32] = Sha256::digest(&baseline.trust_root_xdr).into();
 
-    let Ok(trust_root) = TrustRoot::from_pinned(&baseline.trust_root_xdr, &fingerprint) else {
+    let Ok(trust_root) = TrustRoot::from_pinned(&baseline.trust_root_xdr, &fingerprint, 1) else {
         return;
     };
 

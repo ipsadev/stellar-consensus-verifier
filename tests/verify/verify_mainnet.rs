@@ -38,7 +38,8 @@ fn a_real_mainnet_ledger_authenticates_and_value_binds() {
 
     let local_xdr = unhex(&fx.local_quorum_set);
     let fingerprint: [u8; 32] = Sha256::digest(&local_xdr).into();
-    let root = TrustRoot::from_pinned(&local_xdr, &fingerprint).expect("pinned sound trust root");
+    let root =
+        TrustRoot::from_pinned(&local_xdr, &fingerprint, 1).expect("pinned sound trust root");
 
     let bound = verify_header(
         &nid,

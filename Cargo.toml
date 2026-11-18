@@ -1,6 +1,6 @@
 [package]
 name = "stellar-consensus-verifier"
-version = "2.3.0"
+version = "3.0.0"
 edition = "2021"
 rust-version = "1.81.0"
 license = "Apache-2.0"
@@ -119,6 +119,10 @@ path = "tests/verify/limits.rs"
 [[test]]
 name = "verify"
 path = "tests/verify/verify.rs"
+
+[[test]]
+name = "trust_root_floor"
+path = "tests/verify/trust_root_floor.rs"
 
 [[test]]
 name = "verify_mainnet"

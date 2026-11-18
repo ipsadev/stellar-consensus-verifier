@@ -43,6 +43,12 @@ pub enum ScpError {
     NetworkMismatch,
     #[error("the quorum set does not match the pinned trust-root fingerprint")]
     TrustRootFingerprintMismatch,
+    #[error("a quorum set in the pinned trust root requires {threshold} of {entries}, below the two-thirds floor")]
+    TrustRootThresholdBelowTwoThirds { threshold: u32, entries: usize },
+    #[error(
+        "the pinned trust root names {have} top-level orgs, below the required minimum of {need}"
+    )]
+    TrustRootTooFewOrgs { have: usize, need: usize },
     #[error("input too large: {what} exceeds the limit of {limit}")]
     InputTooLarge { what: &'static str, limit: usize },
     #[error("the EXTERNALIZE commit ballot has an empty value")]

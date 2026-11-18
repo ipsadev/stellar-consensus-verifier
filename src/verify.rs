@@ -74,9 +74,14 @@ impl ConfirmedValue {
 /// evidence is pledged by the same validators whose signatures are being checked.
 /// `from_pinned` forces you to commit out of band to the fingerprint of the set
 /// you trust and refuses anything else, so a quorum set read from the evidence
-/// cannot reach the verifier by accident. It also checks every level of the set
-/// has a strict-majority threshold, which makes any two slices intersect but
-/// does not make them intersect in an honest validator; see `SECURITY.md`.
+/// cannot reach the verifier by accident. On top of stellar-core's own sanity
+/// (a strict majority at every level, which only makes two slices intersect) it
+/// holds a trust-root floor: the top level needs at least a two-thirds
+/// threshold over its orgs, so quorums intersect in an honest org, and at least
+/// `min_orgs` of them, so the trust is actually distributed. A 1-of-1 or a
+/// single-org root is refused. The floor is top-level because an org is the unit
+/// of Byzantine fault; its internal threshold stays its own business. See
+/// `SECURITY.md`.
 #[derive(Clone, Debug)]
 pub struct TrustRoot {
     quorum_set: QuorumSet,
@@ -84,7 +89,11 @@ pub struct TrustRoot {
 }
 
 impl TrustRoot {
-    pub fn from_pinned(quorum_set_xdr: &[u8], expected_fingerprint: &[u8; 32]) -> Result<Self> {
+    pub fn from_pinned(
+        quorum_set_xdr: &[u8],
+        expected_fingerprint: &[u8; 32],
+        min_orgs: usize,
+    ) -> Result<Self> {
         let fingerprint = QuorumSet::hash(quorum_set_xdr);
 
         if &fingerprint != expected_fingerprint {
@@ -94,6 +103,22 @@ impl TrustRoot {
         let quorum_set = QuorumSet::decode(quorum_set_xdr)?;
 
         quorum_set.check_sane(true)?;
+
+        let orgs = quorum_set.top_level_orgs();
+
+        if !quorum_set.top_level_meets_two_thirds() {
+            return Err(ScpError::TrustRootThresholdBelowTwoThirds {
+                threshold: quorum_set.threshold,
+                entries: orgs,
+            });
+        }
+
+        if orgs < min_orgs {
+            return Err(ScpError::TrustRootTooFewOrgs {
+                have: orgs,
+                need: min_orgs,
+            });
+        }
 
         Ok(Self {
             quorum_set,

@@ -69,7 +69,7 @@ fn trust_root(slot: &Slot) -> Result<TrustRoot, ScpError> {
     let xdr = unhex(&slot.local_quorum_set);
     let fingerprint: [u8; 32] = Sha256::digest(&xdr).into();
 
-    TrustRoot::from_pinned(&xdr, &fingerprint)
+    TrustRoot::from_pinned(&xdr, &fingerprint, 1)
 }
 
 fn header_for(slot: &Slot) -> Option<Vec<u8>> {
@@ -203,7 +203,7 @@ fn from_pinned_refuses_a_quorum_set_that_is_not_the_pinned_one() {
         .expect("a BFT-sound slot");
 
     let xdr = unhex(&slot.local_quorum_set);
-    let err = TrustRoot::from_pinned(&xdr, &[0u8; 32])
+    let err = TrustRoot::from_pinned(&xdr, &[0u8; 32], 1)
         .expect_err("a quorum set that does not match the pinned fingerprint is refused");
 
     assert_eq!(err, ScpError::TrustRootFingerprintMismatch);
