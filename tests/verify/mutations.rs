@@ -78,7 +78,7 @@ impl Evidence {
 
     fn run(&self) -> Result<(), ScpError> {
         let fingerprint: [u8; 32] = Sha256::digest(&self.trust_root_xdr).into();
-        let root = TrustRoot::from_pinned(&self.trust_root_xdr, &fingerprint)?;
+        let root = TrustRoot::from_pinned(&self.trust_root_xdr, &fingerprint, 1)?;
 
         verify_update(
             &root,

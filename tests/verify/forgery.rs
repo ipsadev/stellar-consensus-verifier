@@ -48,7 +48,7 @@ fn a_forged_header_is_not_authenticated_by_its_successor() {
     let nid = h32(&fx.network_id);
     let local_xdr = unhex(&fx.local_quorum_set);
     let fingerprint: [u8; 32] = Sha256::digest(&local_xdr).into();
-    let local = TrustRoot::from_pinned(&local_xdr, &fingerprint).unwrap();
+    let local = TrustRoot::from_pinned(&local_xdr, &fingerprint, 1).unwrap();
     let r = &fx.router;
 
     let mut header_n = unhex(&r.header);

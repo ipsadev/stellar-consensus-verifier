@@ -140,6 +140,25 @@ impl QuorumSet {
         Ok(())
     }
 
+    /// The entries you count as orgs at the top level: a bare validator or a
+    /// nested group each count as one.
+    pub fn top_level_orgs(&self) -> usize {
+        self.validators.len() + self.inner_sets.len()
+    }
+
+    /// Whether the top-level threshold is at least two thirds of its entries.
+    ///
+    /// `check_sane` demands a strict majority, which only makes quorums
+    /// intersect; two thirds is what makes them intersect in an honest org, the
+    /// BFT safety bound for a set you pin as a trust root. It is checked at the
+    /// top level only, where the entries are the orgs you trust: an org is the
+    /// unit of Byzantine fault, so its internal threshold is its own business,
+    /// and real tier-1 roots run orgs below two thirds internally. See
+    /// `SECURITY.md`.
+    pub fn top_level_meets_two_thirds(&self) -> bool {
+        (self.threshold as usize) * 3 >= self.top_level_orgs() * 2
+    }
+
     /// Hashes a quorum set, so a validator's claim about which one it runs can be
     /// checked against the bytes supplied.
     pub fn hash(bytes: &[u8]) -> [u8; 32] {
